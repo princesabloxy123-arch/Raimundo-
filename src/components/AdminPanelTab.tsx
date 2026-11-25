@@ -867,22 +867,40 @@ export const AdminPanelTab: React.FC<AdminPanelTabProps> = ({
 
         <div className="flex flex-wrap items-center gap-2">
           {isPresidentMode && (
-            <button
-              type="button"
-              onClick={async () => {
-                await onSeedDefaultsToFirestore();
-                setFeedback(
-                  tr(
-                    'Catálogo completo (Cursos, Hotéis, Farmácias, Supermercados, Patrocinadores, PIX e Senha VIP) sincronizado.',
-                    'Full catalog (Courses, Hotels, Pharmacies, Supermarkets, Sponsors, PIX & VIP Password) synced.'
-                  )
-                );
-              }}
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-emerald-800/80 hover:bg-emerald-700 text-xs font-semibold text-white cursor-pointer whitespace-nowrap"
-            >
-              <Database className="w-4 h-4 text-amber-300" />
-              {tr('Sincronizar Padrão', 'Sync Defaults')}
-            </button>
+            <>
+              <a
+                href="/manual-hospedagem-dns-conae.pdf"
+                download="Manual-Hospedagem-DNS-CONAE.pdf"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-neutral-950 text-xs font-bold cursor-pointer whitespace-nowrap transition-colors"
+              >
+                <Download className="w-3.5 h-3.5" />
+                {tr('Baixar Manual (PDF)', 'Download Guide (PDF)')}
+              </a>
+              <a
+                href="/manual-hospedagem-dns-conae.doc"
+                download="Manual-Hospedagem-DNS-CONAE.doc"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/55 hover:bg-black/75 border border-amber-400/45 text-amber-200 hover:text-white text-xs font-semibold cursor-pointer whitespace-nowrap transition-colors"
+              >
+                <Download className="w-3.5 h-3.5 text-amber-300" />
+                {tr('Baixar Manual (Word)', 'Download Guide (Word)')}
+              </a>
+              <button
+                type="button"
+                onClick={async () => {
+                  await onSeedDefaultsToFirestore();
+                  setFeedback(
+                    tr(
+                      'Catálogo completo (Cursos, Hotéis, Farmácias, Supermercados, Patrocinadores, PIX e Senha VIP) sincronizado.',
+                      'Full catalog (Courses, Hotels, Pharmacies, Supermarkets, Sponsors, PIX & VIP Password) synced.'
+                    )
+                  );
+                }}
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-emerald-800/80 hover:bg-emerald-700 text-xs font-semibold text-white cursor-pointer whitespace-nowrap"
+              >
+                <Database className="w-4 h-4 text-amber-300" />
+                {tr('Sincronizar Padrão', 'Sync Defaults')}
+              </button>
+            </>
           )}
           <button
             type="button"
