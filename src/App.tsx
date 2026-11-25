@@ -3772,6 +3772,7 @@ function ConaeAppContent() {
         onOpenHotels={() => setActiveTab('hoteis')}
         onOpenGolFlights={() => setActiveTab('voos_gol')}
         onOpenTamFlights={() => setActiveTab('voos_tam')}
+        onOpenDuqueEvento={navigateToDuqueEvento}
       />
 
       {/* Footer */}

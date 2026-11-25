@@ -10,6 +10,7 @@ import {
   Maximize2,
   Minimize2,
   Plane,
+  Sparkles,
   TrendingUp,
 } from 'lucide-react';
 import { BrazilStateFlag } from './BrazilStateFlag';
@@ -45,8 +46,10 @@ interface FloatingTreasuryMiniWidgetProps {
   onOpenHotels?: () => void;
   onOpenGolFlights?: () => void;
   onOpenTamFlights?: () => void;
+  onOpenDuqueEvento?: () => void;
 }
 
+const CONAE_DUQUE_ROBOT_3D = '/src/assets/images/conae_duque_robot_3d_1795637461401.jpg';
 const BASE_SPARK = [5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0];
 
 export const FloatingTreasuryMiniWidget: React.FC<FloatingTreasuryMiniWidgetProps> = ({
@@ -61,6 +64,7 @@ export const FloatingTreasuryMiniWidget: React.FC<FloatingTreasuryMiniWidgetProp
   onOpenHotels,
   onOpenGolFlights,
   onOpenTamFlights,
+  onOpenDuqueEvento,
 }) => {
   const { isEn, tr } = useLanguage();
   const [minimized, setMinimized] = useState(false);
@@ -203,41 +207,84 @@ export const FloatingTreasuryMiniWidget: React.FC<FloatingTreasuryMiniWidgetProp
     }
   };
 
+  const robotFloatingLauncher = onOpenDuqueEvento ? (
+    <button
+      type="button"
+      onClick={onOpenDuqueEvento}
+      aria-label={tr('Abrir Robô Duque IA', 'Open Robô Duque AI')}
+      title={tr('Clique para abrir o Robô Duque IA', 'Click to open Robô Duque AI')}
+      className="group w-[184px] sm:w-[210px] rounded-xl bg-gradient-to-r from-[#062318]/96 via-[#081a13]/96 to-[#231804]/96 backdrop-blur-md border border-amber-400/80 hover:border-amber-300 shadow-[0_12px_28px_rgba(0,0,0,0.72)] px-2 py-1.5 flex items-center gap-2 text-left transition-transform hover:scale-[1.03] active:scale-95 cursor-pointer"
+    >
+      <span className="conae-robot-3d-stage shrink-0">
+        <span aria-hidden="true" className="conae-robot-3d-aura" />
+        <span className="conae-robot-3d-figure w-10 h-10 sm:w-11 sm:h-11 rounded-xl overflow-hidden border-2 border-amber-400/95 bg-[#040e0a] block">
+          <img
+            src={CONAE_DUQUE_ROBOT_3D}
+            alt={tr('Robô Duque 3D', '3D Robô Duque')}
+            referrerPolicy="no-referrer"
+            className="w-full h-full object-cover"
+          />
+          <span aria-hidden="true" className="conae-robot-3d-shine" />
+        </span>
+      </span>
+
+      <span className="min-w-0 flex-1 leading-tight">
+        <span className="flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
+          <span className="font-display text-[11px] sm:text-xs font-bold conae-gold-text truncate">
+            {tr('Robô Duque', 'Robô Duque')}
+          </span>
+        </span>
+        <span className="text-[10px] text-emerald-200/90 flex items-center gap-1 mt-0.5 truncate">
+          <Sparkles className="w-2.5 h-2.5 text-amber-300 shrink-0" />
+          <span className="truncate">{tr('Toque para abrir', 'Tap to open')}</span>
+        </span>
+      </span>
+
+      <ChevronRight className="w-3.5 h-3.5 text-amber-300 group-hover:translate-x-0.5 transition-transform shrink-0" />
+    </button>
+  ) : null;
+
   if (minimized) {
     return (
-      <button
-        type="button"
-        onClick={() => setMinimized(false)}
-        className="fixed right-2 sm:right-3 top-24 z-40 conae-panel rounded-lg px-2.5 py-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-amber-300 shadow-xl animate-float-top-to-bottom cursor-pointer"
-        title={tr(
-          'Abrir aba flutuante Tesouro CNEC, Token Booking & Promo GOL',
-          'Open floating CNEC Treasury, Booking Token & GOL Deals tab'
-        )}
-      >
-        <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
-        <span className="font-mono">CNEC R$ {fmt(currentPrice, 2)}</span>
-        <span className="text-[9px] px-1 py-0.5 rounded bg-[#003580] text-white font-bold border border-[#006CE4]">
-          B.
-        </span>
-        <span className="inline-flex items-center justify-center w-4 h-4 rounded bg-[#FF5A00] text-white">
-          <Plane className="w-2.5 h-2.5 animate-plane-takeoff" />
-        </span>
-        <span className="inline-flex items-center justify-center w-4 h-4 rounded bg-[#E8114B] text-white">
-          <Plane className="w-2.5 h-2.5 animate-plane-takeoff" />
-        </span>
-        <Maximize2 className="w-3 h-3 text-amber-300" />
-      </button>
+      <div className="fixed right-2 sm:right-3 top-24 z-40 flex flex-col items-end gap-2 animate-float-top-to-bottom">
+        {robotFloatingLauncher}
+        <button
+          type="button"
+          onClick={() => setMinimized(false)}
+          className="conae-panel rounded-lg px-2.5 py-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-amber-300 shadow-xl cursor-pointer"
+          title={tr(
+            'Abrir aba flutuante Tesouro CNEC, Token Booking & Promo GOL',
+            'Open floating CNEC Treasury, Booking Token & GOL Deals tab'
+          )}
+        >
+          <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+          <span className="font-mono">CNEC R$ {fmt(currentPrice, 2)}</span>
+          <span className="text-[9px] px-1 py-0.5 rounded bg-[#003580] text-white font-bold border border-[#006CE4]">
+            B.
+          </span>
+          <span className="inline-flex items-center justify-center w-4 h-4 rounded bg-[#FF5A00] text-white">
+            <Plane className="w-2.5 h-2.5 animate-plane-takeoff" />
+          </span>
+          <span className="inline-flex items-center justify-center w-4 h-4 rounded bg-[#E8114B] text-white">
+            <Plane className="w-2.5 h-2.5 animate-plane-takeoff" />
+          </span>
+          <Maximize2 className="w-3 h-3 text-amber-300" />
+        </button>
+      </div>
     );
   }
 
   return (
-    <aside
-      aria-label={tr(
-        'Aba flutuante Tesouro CONAE e Token de Reserva Booking.com',
-        'Floating CONAE Treasury and Booking.com Reservation Token tab'
-      )}
-      className="fixed right-2 sm:right-3 top-28 sm:top-32 z-40 w-[184px] sm:w-[210px] conae-panel rounded-xl p-2.5 space-y-1.5 shadow-2xl animate-float-top-to-bottom border border-amber-400/55"
-    >
+    <div className="fixed right-2 sm:right-3 top-24 sm:top-28 z-40 flex flex-col items-end gap-2 animate-float-top-to-bottom">
+      {robotFloatingLauncher}
+      <aside
+        aria-label={tr(
+          'Aba flutuante Tesouro CONAE e Token de Reserva Booking.com',
+          'Floating CONAE Treasury and Booking.com Reservation Token tab'
+        )}
+        className="w-[184px] sm:w-[210px] conae-panel rounded-xl p-2.5 space-y-1.5 shadow-2xl border border-amber-400/55"
+      >
       <div className="flex items-center justify-between gap-1">
         <button
           type="button"
@@ -589,6 +636,7 @@ export const FloatingTreasuryMiniWidget: React.FC<FloatingTreasuryMiniWidgetProp
           </a>
         </div>
       </div>
-    </aside>
+      </aside>
+    </div>
   );
 };
