@@ -112,6 +112,8 @@ import { HotelGpsGalleryPanel } from './components/HotelGpsGalleryPanel';
 import { InlineHotelBookingBoard } from './components/InlineHotelBookingBoard';
 import { ShareholderBranchTree } from './components/ShareholderBranchTree';
 import { AppLockScreen } from './components/AppLockScreen';
+import { DuqueEventoStudio } from './components/DuqueEventoStudio';
+import { PublicEventPage } from './components/PublicEventPage';
 import { GolFlightsTab } from './components/GolFlightsTab';
 import { LatamFlightsTab } from './components/LatamFlightsTab';
 import { GOL_PROMO_FLIGHTS } from './data/golFlightsData';
@@ -170,14 +172,70 @@ function formatTrialMMSS(totalSeconds: number): string {
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
+type StandaloneRoute =
+  | { kind: 'conae' }
+  | { kind: 'duque-evento' }
+  | { kind: 'public-event'; slug: string };
+
+function parseStandaloneRoute(): StandaloneRoute {
+  if (typeof window === 'undefined') return { kind: 'conae' };
+  const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
+  const params = new URLSearchParams(window.location.search);
+
+  if (pathname === '/duque-evento' || params.get('page') === 'duque-evento') {
+    return { kind: 'duque-evento' };
+  }
+
+  const eventMatch = pathname.match(/^\/evento\/([a-zA-Z0-9_-]+)$/);
+  if (eventMatch?.[1]) {
+    return { kind: 'public-event', slug: eventMatch[1] };
+  }
+
+  const queryEvent = params.get('evento');
+  if (queryEvent && /^[a-zA-Z0-9_-]+$/.test(queryEvent)) {
+    return { kind: 'public-event', slug: queryEvent };
+  }
+
+  return { kind: 'conae' };
+}
+
 function ConaeAppContent() {
   const { isEn, tr, translateDynamic } = useLanguage();
   const numLocale = isEn ? 'en-US' : 'pt-BR';
+  const [standaloneRoute, setStandaloneRoute] = useState<StandaloneRoute>(() => parseStandaloneRoute());
   const [trialStartMs] = useState<number>(() => getOrCreateTrialStartMs());
   const [remainingTrialSeconds, setRemainingTrialSeconds] = useState<number>(() =>
     computeRemainingTrialSeconds(trialStartMs)
   );
   const [isAppUnlocked, setIsAppUnlocked] = useState(false);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setStandaloneRoute(parseStandaloneRoute());
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const navigateToDuqueEvento = () => {
+    window.history.pushState({}, '', '/duque-evento');
+    setStandaloneRoute({ kind: 'duque-evento' });
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  };
+
+  const navigateToPublishedEvent = (slug: string) => {
+    const clean = slug.replace(/[^a-zA-Z0-9_-]/g, '');
+    if (!clean) return;
+    window.history.pushState({}, '', `/evento/${clean}`);
+    setStandaloneRoute({ kind: 'public-event', slug: clean });
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  };
+
+  const navigateBackToConae = () => {
+    window.history.pushState({}, '', '/');
+    setStandaloneRoute({ kind: 'conae' });
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  };
   const [manualLockRequested, setManualLockRequested] = useState(false);
   const pwaInstall = usePWAInstall();
   const [activeTab, setActiveTab] = useState<TabId>('inicio');
@@ -2576,6 +2634,29 @@ function ConaeAppContent() {
   const trialExpired = remainingTrialSeconds <= 0;
   const shouldShowLockScreen = !isAppUnlocked && (trialExpired || manualLockRequested);
 
+  if (standaloneRoute.kind === 'duque-evento') {
+    return (
+      <DuqueEventoStudio
+        firebaseUser={firebaseUser}
+        profile={profile}
+        isAdmin={isAdmin}
+        onGoogleLogin={handleGoogleLogin}
+        onBackToConae={navigateBackToConae}
+        onOpenPublishedEvent={navigateToPublishedEvent}
+      />
+    );
+  }
+
+  if (standaloneRoute.kind === 'public-event') {
+    return (
+      <PublicEventPage
+        slug={standaloneRoute.slug}
+        onBackToStudio={navigateToDuqueEvento}
+        onBackToConae={navigateBackToConae}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#050907] text-emerald-50 flex flex-col overflow-x-hidden relative">
       <OfflineIndicator />
@@ -2593,6 +2674,7 @@ function ConaeAppContent() {
           shareholderValuations={treasuryStats.shareholderValuations}
           publicAffiliates={publicAffiliates}
           pwaInstall={pwaInstall}
+          onOpenDuqueEvento={navigateToDuqueEvento}
           onUnlock={() => {
             setIsAppUnlocked(true);
             setManualLockRequested(false);

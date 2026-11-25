@@ -597,6 +597,67 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "DukeEvent": {
+      "title": "DukeEvent",
+      "description": "AI-designed event page created with Robô Duque Evento, including panels, schedule, speakers, tickets, and permanent public share link.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "slug": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "status": { "type": "string", "enum": ["draft", "published"] },
+        "title": { "type": "string", "minLength": 2, "maxLength": 140 },
+        "subtitle": { "type": "string", "maxLength": 220 },
+        "category": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "tagline": { "type": "string", "maxLength": 160 },
+        "dateLabel": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "timeLabel": { "type": "string", "maxLength": 80 },
+        "venueName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "city": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "state": { "type": "string", "minLength": 2, "maxLength": 4 },
+        "theme": { "type": "string", "enum": ["emerald_gold", "royal_blue", "crimson_gold", "midnight_violet", "ivory_gold"] },
+        "organizerName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "whatsappPhone": { "type": "string", "maxLength": 32 },
+        "registrationCta": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "heroSummary": { "type": "string", "minLength": 2, "maxLength": 600 },
+        "highlights": { "type": "array" },
+        "metrics": { "type": "array" },
+        "panels": { "type": "array" },
+        "schedule": { "type": "array" },
+        "speakers": { "type": "array" },
+        "tickets": { "type": "array" },
+        "bannerImageUrl": { "type": "string", "maxLength": 60000 },
+        "publishedOrigin": { "type": "string", "maxLength": 200 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "slug",
+        "ownerUid",
+        "ownerName",
+        "status",
+        "title",
+        "category",
+        "dateLabel",
+        "venueName",
+        "city",
+        "state",
+        "theme",
+        "organizerName",
+        "registrationCta",
+        "heroSummary",
+        "highlights",
+        "metrics",
+        "panels",
+        "schedule",
+        "speakers",
+        "tickets",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -699,6 +760,10 @@
     "/executive_mandates/{mandateId}": {
       "schema": { "$ref": "#/entities/ExecutiveMandate" },
       "description": "President-granted outorgações and execution reports for hotelaria, farmácias, clubes, and operational inspections."
+    },
+    "/duke_events/{eventId}": {
+      "schema": { "$ref": "#/entities/DukeEvent" },
+      "description": "Published AI-generated event pages created with Robô Duque Evento, publicly viewable by slug link."
     }
   }
 }

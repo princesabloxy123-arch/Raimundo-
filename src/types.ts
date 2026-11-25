@@ -453,5 +453,90 @@ export interface ExecutiveMandate {
   updatedAt?: unknown;
 }
 
+export type DukeEventTheme =
+  | 'emerald_gold'
+  | 'royal_blue'
+  | 'crimson_gold'
+  | 'midnight_violet'
+  | 'ivory_gold';
+
+export interface DukeEventMetric {
+  label: string;
+  value: string;
+}
+
+export interface DukeEventPanel {
+  title: string;
+  subtitle: string;
+  description: string;
+  badge: string;
+}
+
+export interface DukeEventScheduleItem {
+  time: string;
+  title: string;
+  speaker: string;
+  stage: string;
+  description: string;
+}
+
+export interface DukeEventSpeaker {
+  name: string;
+  role: string;
+  topic: string;
+}
+
+export interface DukeEventTicket {
+  name: string;
+  priceLabel: string;
+  perks: string;
+  highlighted: boolean;
+}
+
+export interface DukeEventSpec {
+  slug: string;
+  title: string;
+  subtitle: string;
+  category: string;
+  tagline: string;
+  dateLabel: string;
+  timeLabel: string;
+  venueName: string;
+  city: string;
+  state: string;
+  theme: DukeEventTheme;
+  organizerName: string;
+  whatsappPhone: string;
+  registrationCta: string;
+  heroSummary: string;
+  highlights: string[];
+  metrics: DukeEventMetric[];
+  panels: DukeEventPanel[];
+  schedule: DukeEventScheduleItem[];
+  speakers: DukeEventSpeaker[];
+  tickets: DukeEventTicket[];
+  bannerImageUrl?: string;
+}
+
+export interface DukeEventRecord extends DukeEventSpec {
+  id: string;
+  ownerUid: string;
+  ownerName: string;
+  status: 'draft' | 'published';
+  publishedOrigin?: string;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+}
+
+export interface DukeChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string;
+  publishedUrl?: string;
+  attachmentPreview?: string;
+  attachmentName?: string;
+}
+
 
 

@@ -616,6 +616,53 @@ service cloud.firestore {
       data.updatedAt is timestamp;
     }
 
+    function isValidDukeEvent(data) {
+      return data.keys().hasOnly([
+        'id', 'slug', 'ownerUid', 'ownerName', 'status',
+        'title', 'subtitle', 'category', 'tagline',
+        'dateLabel', 'timeLabel', 'venueName', 'city', 'state',
+        'theme', 'organizerName', 'whatsappPhone', 'registrationCta', 'heroSummary',
+        'highlights', 'metrics', 'panels', 'schedule', 'speakers', 'tickets',
+        'bannerImageUrl', 'publishedOrigin', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasAll([
+        'id', 'slug', 'ownerUid', 'ownerName', 'status',
+        'title', 'category', 'dateLabel', 'venueName', 'city', 'state',
+        'theme', 'organizerName', 'registrationCta', 'heroSummary',
+        'highlights', 'metrics', 'panels', 'schedule', 'speakers', 'tickets',
+        'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      isValidId(data.slug) &&
+      isValidId(data.ownerUid) &&
+      data.ownerName is string && data.ownerName.size() >= 2 && data.ownerName.size() <= 100 &&
+      data.status in ['draft', 'published'] &&
+      data.title is string && data.title.size() >= 2 && data.title.size() <= 140 &&
+      (!('subtitle' in data) || (data.subtitle is string && data.subtitle.size() <= 220)) &&
+      data.category is string && data.category.size() >= 2 && data.category.size() <= 80 &&
+      (!('tagline' in data) || (data.tagline is string && data.tagline.size() <= 160)) &&
+      data.dateLabel is string && data.dateLabel.size() >= 2 && data.dateLabel.size() <= 80 &&
+      (!('timeLabel' in data) || (data.timeLabel is string && data.timeLabel.size() <= 80)) &&
+      data.venueName is string && data.venueName.size() >= 2 && data.venueName.size() <= 160 &&
+      data.city is string && data.city.size() >= 2 && data.city.size() <= 80 &&
+      data.state is string && data.state.size() >= 2 && data.state.size() <= 4 &&
+      data.theme in ['emerald_gold', 'royal_blue', 'crimson_gold', 'midnight_violet', 'ivory_gold'] &&
+      data.organizerName is string && data.organizerName.size() >= 2 && data.organizerName.size() <= 120 &&
+      (!('whatsappPhone' in data) || (data.whatsappPhone is string && data.whatsappPhone.size() <= 32)) &&
+      data.registrationCta is string && data.registrationCta.size() >= 2 && data.registrationCta.size() <= 80 &&
+      data.heroSummary is string && data.heroSummary.size() >= 2 && data.heroSummary.size() <= 600 &&
+      data.highlights is list && data.highlights.size() <= 8 &&
+      data.metrics is list && data.metrics.size() <= 6 &&
+      data.panels is list && data.panels.size() <= 8 &&
+      data.schedule is list && data.schedule.size() <= 16 &&
+      data.speakers is list && data.speakers.size() <= 10 &&
+      data.tickets is list && data.tickets.size() <= 6 &&
+      (!('bannerImageUrl' in data) || (data.bannerImageUrl is string && data.bannerImageUrl.size() <= 60000)) &&
+      (!('publishedOrigin' in data) || (data.publishedOrigin is string && data.publishedOrigin.size() <= 200)) &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
     // 4. Collection Rules
     match /test/{docId} {
       allow get: if isValidId(docId);
@@ -995,6 +1042,25 @@ service cloud.firestore {
           )
         );
       allow delete: if isValidId(mandateId) && isAdmin();
+    }
+
+    match /duke_events/{eventId} {
+      allow get: if isValidId(eventId);
+      allow list: if isSignedIn() && (isBootstrappedAdmin() || resource.data.ownerUid == request.auth.uid);
+      allow create: if isValidId(eventId) && isSignedIn() && isValidDukeEvent(incoming()) &&
+        incoming().id == eventId &&
+        incoming().slug == eventId &&
+        incoming().ownerUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(eventId) && isSignedIn() && isValidDukeEvent(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().slug == existing().slug &&
+        incoming().ownerUid == existing().ownerUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (existing().ownerUid == request.auth.uid || isAdmin());
+      allow delete: if isValidId(eventId) && isSignedIn() && (existing().ownerUid == request.auth.uid || isAdmin());
     }
   }
 }

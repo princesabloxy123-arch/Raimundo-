@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
+  ArrowRight,
   Check,
   CheckCircle2,
   Copy,
   Crown,
   Download,
+  ExternalLink,
   Eye,
   EyeOff,
   GitBranch,
@@ -45,6 +47,7 @@ interface AppLockScreenProps {
   shareholderValuations?: ShareholderValuationRecord[];
   publicAffiliates?: PublicAffiliate[];
   pwaInstall?: PWAInstallState;
+  onOpenDuqueEvento?: () => void;
 }
 
 const ADMIN_CONTACT_NAME = 'Raimundo Netto';
@@ -53,6 +56,8 @@ const ADMIN_WHATSAPP_DIGITS = '5596981153517';
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_SECONDS = 30;
 const LOCK_BANNER_IMAGE = '/assets/aistudio/InShot_20261124_195330616_6fd30136.jpg';
+const CONAE_DUQUE_ROBOT_3D = '/src/assets/images/conae_duque_robot_3d_1795637461401.jpg';
+const CONAE_AI_BRAIN_3D = '/src/assets/images/conae_ai_brain_3d_1795638395875.jpg';
 
 const WEEKDAYS_PT = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 const WEEKDAYS_EN = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -80,6 +85,7 @@ export const AppLockScreen: React.FC<AppLockScreenProps> = ({
   shareholderValuations = [],
   publicAffiliates = [],
   pwaInstall,
+  onOpenDuqueEvento,
 }) => {
   const { isEn, tr } = useLanguage();
   const locale = isEn ? 'en-US' : 'pt-BR';
@@ -432,7 +438,112 @@ export const AppLockScreen: React.FC<AppLockScreenProps> = ({
       </div>
 
       {/* Scrollable Foreground Content */}
-      <div className="relative z-10 w-full h-full overflow-y-auto flex flex-col items-center justify-start sm:justify-center gap-2.5 p-3 pb-28 sm:p-4 sm:pb-8">
+      <div className="relative z-10 w-full h-full overflow-y-auto flex flex-col items-center justify-start sm:justify-center gap-3 p-3 pb-28 sm:p-4 sm:pb-8">
+        {/* Floating Animated 3D Moving Robot Notification Card */}
+        <aside
+          aria-label={tr('Notificação flutuante do robô CONAE', 'Floating CONAE robot notification')}
+          className="animate-float-vertical w-full max-w-xl lg:fixed lg:top-6 lg:right-6 lg:w-[310px] lg:max-w-[310px] z-30 shrink-0"
+        >
+          <div className="rounded-2xl bg-gradient-to-br from-[#062318]/96 via-[#071812]/96 to-[#1d1504]/96 backdrop-blur-md border border-amber-400/80 shadow-[0_20px_54px_rgba(0,0,0,0.72)] p-3.5 space-y-2.5 text-emerald-50">
+            <div className="flex items-center gap-3">
+              {/* 3D Moving Robot Figure */}
+              <div className="conae-robot-3d-stage shrink-0">
+                <span aria-hidden="true" className="conae-robot-3d-aura" />
+                <div className="conae-robot-3d-figure w-[68px] h-[68px] rounded-2xl overflow-hidden border-2 border-amber-400/95 bg-[#040e0a]">
+                  <img
+                    src={CONAE_DUQUE_ROBOT_3D}
+                    alt={tr('Robô CONAE em movimento 3D', 'Animated 3D CONAE Robot')}
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover"
+                  />
+                  <span aria-hidden="true" className="conae-robot-3d-shine" />
+                </div>
+              </div>
+
+              {/* 3D Moving Neural Brain Figure */}
+              <div className="conae-brain-3d-stage shrink-0">
+                <span aria-hidden="true" className="conae-brain-3d-aura" />
+                <span aria-hidden="true" className="conae-brain-3d-ring" />
+                <div className="conae-brain-3d-core w-[56px] h-[56px] rounded-full overflow-hidden border-2 border-emerald-400/90 bg-[#030b08]">
+                  <img
+                    src={CONAE_AI_BRAIN_3D}
+                    alt={tr('Cérebro IA em movimento 3D', 'Animated 3D AI Brain')}
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover scale-105"
+                  />
+                </div>
+              </div>
+
+              <div className="min-w-0 flex-1 leading-tight space-y-1">
+                <div className="flex items-start justify-between gap-1">
+                  <p className="text-xs font-bold text-amber-200 leading-snug">
+                    {tr(
+                      'Pronto para servir nossos clientes da CONAE!',
+                      'Ready to serve our CONAE clients!'
+                    )}
+                  </p>
+                  <a
+                    href="/duque-evento"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={tr('Abrir em nova aba', 'Open in new tab')}
+                    className="p-1.5 rounded-lg bg-black/45 hover:bg-black/70 border border-amber-400/40 text-amber-300 hover:text-amber-200 transition-colors shrink-0"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+                <p className="text-[11px] text-emerald-50/90 leading-snug">
+                  {tr(
+                    'Entre e fale comigo — construo tudo e gero seu link.',
+                    'Come in and talk to me — I build everything and generate your link.'
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-black/45 border border-emerald-400/25 px-3 py-2">
+              <p className="text-[11px] text-emerald-100/90 leading-snug">
+                {tr(
+                  'Divulgue seu evento com nosso robô — ele faz toda a parte pra você e entrega o link na hora.',
+                  'Promote your event with our robot — it handles everything for you and delivers the link instantly.'
+                )}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {onOpenDuqueEvento ? (
+                <button
+                  type="button"
+                  onClick={onOpenDuqueEvento}
+                  className="conae-btn-inner-glow flex-1 min-h-[38px] px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-neutral-950 font-bold text-xs inline-flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+                >
+                  <span>{tr('Entrar e Conversar', 'Enter & Chat')}</span>
+                  <ArrowRight className="w-3.5 h-3.5 shrink-0" />
+                </button>
+              ) : (
+                <a
+                  href="/duque-evento"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="conae-btn-inner-glow flex-1 min-h-[38px] px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-neutral-950 font-bold text-xs inline-flex items-center justify-center gap-1.5 whitespace-nowrap"
+                >
+                  <span>{tr('Entrar e Conversar', 'Enter & Chat')}</span>
+                  <ArrowRight className="w-3.5 h-3.5 shrink-0" />
+                </a>
+              )}
+              <a
+                href="/duque-evento"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="min-h-[38px] px-2.5 py-1.5 rounded-lg bg-black/50 hover:bg-black/75 border border-amber-400/35 text-[11px] font-semibold text-amber-200 inline-flex items-center gap-1 whitespace-nowrap"
+              >
+                <ExternalLink className="w-3 h-3 shrink-0" />
+                <span>{tr('Nova Aba', 'New Tab')}</span>
+              </a>
+            </div>
+          </div>
+        </aside>
+
         {/* Unified frosted Lock Screen Panel containing Banner, Rolling Bars, Password, Installer, Contact & Live Operation */}
         <section className="w-full max-w-xl rounded-2xl bg-[#07150f]/84 backdrop-blur-md border border-amber-400/50 shadow-[0_24px_70px_rgba(0,0,0,0.68)] p-3.5 sm:p-4 space-y-2.5 text-emerald-50 shrink-0">
         {/* Top Row: Emblem + Brand + Language Switch */}
