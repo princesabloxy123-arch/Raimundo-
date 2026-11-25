@@ -104,6 +104,14 @@ export interface DukeImageDesignSpec {
   tintColor?: string;
   tintOpacity?: number;
   emblemType?: 'crown' | 'globe' | 'star' | 'cross' | 'spark' | 'shield' | 'none';
+  textPosition?: 'top' | 'center' | 'bottom';
+  fontStyle?: 'editorial' | 'modern' | 'impact';
+  fontScale?: number;
+}
+
+export interface DukeWebSource {
+  title: string;
+  uri: string;
 }
 
 export interface DukeChatHistoryItem {
@@ -121,6 +129,8 @@ export interface DukeChatAttachment {
 export interface DukeChatRequestBody {
   message: string;
   mode?: DukeStudioMode;
+  webSearch?: boolean;
+  deepThinking?: boolean;
   history?: DukeChatHistoryItem[];
   currentEvent?: Partial<DukeEventSpec> | null;
   attachment?: DukeChatAttachment | null;
@@ -132,6 +142,7 @@ export interface DukeChatResult {
   shouldPublish: boolean;
   event?: DukeEventSpec;
   imageDesign?: DukeImageDesignSpec;
+  sources?: DukeWebSource[];
 }
 
 const VALID_THEMES: ReadonlySet<DukeEventTheme> = new Set([
@@ -350,6 +361,17 @@ function sanitizeImageDesignSpec(raw: unknown, hasPhoto: boolean): DukeImageDesi
     emblemType: VALID_EMBLEMS.has(emblemRaw)
       ? (emblemRaw as DukeImageDesignSpec['emblemType'])
       : 'spark',
+    textPosition:
+      obj.textPosition === 'top' || obj.textPosition === 'center' || obj.textPosition === 'bottom'
+        ? obj.textPosition
+        : hasPhoto
+          ? 'bottom'
+          : 'center',
+    fontStyle:
+      obj.fontStyle === 'editorial' || obj.fontStyle === 'modern' || obj.fontStyle === 'impact'
+        ? obj.fontStyle
+        : 'editorial',
+    fontScale: clampNum(obj.fontScale, 1, 0.72, 1.45),
   };
 }
 
@@ -368,9 +390,9 @@ function detectStudioMode(
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
 
-  // Explicit image creation / photo reformulation intents
+  // Explicit image creation / write-on-photo / photo reformulation intents
   const imageRegex =
-    /\b(imagem|imagens|foto|banner|cartaz|flyer|poster|arte|logotipo|logo|capa|stories|story|post para|card visual|reformula|reformular|reformule|edita|editar|edite|melhora|melhorar|transforma|transformar|retoca|retocar|filtro|moldura|miniatura|thumbnail)\b/;
+    /\b(imagem|imagens|foto|banner|cartaz|flyer|poster|arte|logotipo|logo|capa|stories|story|post para|card visual|reformula|reformular|reformule|edita|editar|edite|modifica|modificar|modifique|escreve na foto|escrever na foto|escreva na foto|texto na foto|frase na foto|coloca texto|colocar texto|melhora|melhorar|transforma|transformar|retoca|retocar|filtro|moldura|miniatura|thumbnail)\b/;
   // Explicit event builder / link publishing intents
   const eventRegex =
     /\b(evento|eventos|congresso|convencao|culto|conferencia|workshop|seminario|palestra|programacao|paineis|painel|preletores|palestrantes|ingressos|credenciamento|gera o link|gerar link|publica|publicar|link do evento|pagina do evento|pagina de divulgacao)\b/;
@@ -570,6 +592,15 @@ const DUKE_IMAGE_RESPONSE_SCHEMA = {
           type: Type.STRING,
           enum: ['crown', 'globe', 'star', 'cross', 'spark', 'shield', 'none'],
         },
+        textPosition: {
+          type: Type.STRING,
+          enum: ['top', 'center', 'bottom'],
+        },
+        fontStyle: {
+          type: Type.STRING,
+          enum: ['editorial', 'modern', 'impact'],
+        },
+        fontScale: { type: Type.NUMBER },
       },
       required: [
         'title',
@@ -589,13 +620,14 @@ const DUKE_IMAGE_RESPONSE_SCHEMA = {
   required: ['reply', 'imageDesign'],
 };
 
-const SYSTEM_INSTRUCTION_CHAT = `Você é o **Robô Duque (ConaeDuque)**, um assistente completo de Inteligência Artificial no estilo ChatGPT, pronto para servir todos os clientes, pastores, líderes, empresários e afiliados da CONAE.
+const SYSTEM_INSTRUCTION_CHAT = `Você é o **Robô Duque (ConaeDuque)**, um assistente completo de Inteligência Artificial avançada pronto para servir todos os clientes, pastores, líderes, empresários e afiliados da CONAE.
 
-Suas capacidades no modo Chat Livre & Código:
-1. **Criação de Textos Profissionais:** redija mensagens de WhatsApp, legendas de Instagram, cartas oficiais, convites, sermões, esboços de pregação, roteiros de vídeo, campanhas de divulgação, contratos simples, resumos e traduções em Português do Brasil impecável.
-2. **Programação e Códigos Completos:** quando o cliente pedir qualquer código (HTML, CSS, JavaScript, TypeScript, React, Python, SQL, automações, páginas web), entregue o código completo, limpo e pronto para copiar dentro de blocos markdown (\`\`\`html, \`\`\`tsx, \`\`\`python etc.) com explicação clara de como usar.
-3. **Leitura de Fotos e Documentos Anexados:** quando o cliente enviar uma imagem, PDF ou texto, analise o conteúdo com atenção e responda exatamente ao que foi pedido.
-4. **Proatividade Inteligente:** responda de forma calorosa, direta, bem organizada (com tópicos claros e negrito onde ajudar) e, quando fizer sentido, lembre que você também pode **criar/reformular artes e imagens** ou **montar um evento completo com link fixo** se a pessoa pedir.`;
+Suas ferramentas completas no modo Chat, Pesquisa & Código:
+1. **Criação de Textos Profissionais:** redija mensagens de WhatsApp, legendas de Instagram, cartas oficiais, convites, sermões, esboços de pregação, roteiros de vídeo, campanhas de divulgação, contratos, planilhas em tabela, resumos e traduções em Português do Brasil impecável.
+2. **Programação e Canvas de Código Ao Vivo:** quando o cliente pedir qualquer site, página, cartão digital, calculadora, formulário ou código (HTML, CSS, JavaScript, TypeScript, React, Python, SQL), entregue o código completo e auto-contido dentro de blocos markdown (\`\`\`html, \`\`\`tsx, \`\`\`python etc.) para ele visualizar ao vivo e copiar com 1 clique.
+3. **Pesquisa na Web & Leitura de Links:** quando a busca na web estiver ativa ou o cliente enviar um link/URL, consulte informações atualizadas com precisão e clareza.
+4. **Visão de Fotos e Leitura de PDFs/Arquivos:** analise imagens, documentos PDF e arquivos anexados detalhadamente.
+5. **Escrever/Modificar Fotos e Montar Eventos:** responda com clareza, organização e proatividade.`;
 
 const SYSTEM_INSTRUCTION_EVENT = `Você é o **Robô Duque (ConaeDuque)**, o robô oficial com Inteligência Artificial da CONAE, pronto para servir todos os clientes, pastores, empresários e afiliados da CONAE.
 Sua missão neste modo é construir em tempo real páginas de eventos, congressos, convenções, cultos, workshops, feiras e campanhas prontas para gerar link fixo oficial.
@@ -608,22 +640,18 @@ Regras obrigatórias:
 5. Defina "shouldPublish": true APENAS quando o cliente pedir explicitamente para publicar, salvar ou gerar o link oficial.
 6. Nunca use HTML ou Markdown quebrado nos campos do objeto "event".`;
 
-const SYSTEM_INSTRUCTION_IMAGE = `Você é o **Diretor Criativo & Estúdio de Imagem IA do Robô Duque (ConaeDuque)**!
-Sua missão é projetar artes gráficas profissionais em alta resolução OU reformular/transformar fotos enviadas pelo cliente (aplicando tratamento cinematográfico de cor, contraste, brilho, saturação, vinheta, tonalidade, moldura, enquadramento e tipografia profissional).
+const SYSTEM_INSTRUCTION_IMAGE = `Você é o **Diretor Criativo & Editor de Fotos IA do Robô Duque (ConaeDuque)**!
+Sua missão é criar artes gráficas profissionais em alta resolução OU **escrever exatamente o texto pedido na foto e modificar/reformular a imagem enviada pelo cliente** (cor, iluminação, contraste, brilho, saturação, sépia, vinheta, tonalidade, moldura, enquadramento, posição e estilo da fonte).
 
 Regras obrigatórias:
-1. Sempre devolva cores em hexadecimal válido (#RRGGBB) harmoniosas e de alto contraste (ex: esmeralda #04140d + dourado #f59e0b, azul royal #06132b + ciano #38bdf8, rubi #1e050b + ouro #fbbf24, violeta #120826 + lilás #c084fc, luxo claro #fdfaf2 + dourado #b45309).
-2. Escolha o "aspectRatio" conforme o pedido:
-   - "9:16" para Stories, Reels, Status WhatsApp ou cartaz vertical.
-   - "16:9" para capa de evento, banner horizontal, YouTube ou TV.
-   - "4:5" para post vertical de feed Instagram.
-   - "1:1" (padrão) para post quadrado, logotipo, selo ou convite.
-3. Quando o cliente enviar uma FOTO para reformular:
-   - Analise a foto visualmente e ajuste "brightness" (0.7-1.35), "contrast" (0.9-1.45), "saturate" (0.0 para P&B até 1.6 vibrante), "sepia" (0-0.5), "hueRotate" (-35 a 35), "vignette" (0.2-0.8), "tintColor" e "tintOpacity" (0-0.38).
-   - Se o cliente pedir "sem texto" ou apenas tratamento de foto/cores, deixe "headline", "subheadline", "badgeText", "ctaText" e "footerText" vazios ("").
-   - Se o cliente pedir cartaz, banner, convite ou arte com texto sobre a foto, preencha textos curtos e impactantes e escolha o melhor "layout" ("cinematic_bottom", "framed_poster", "editorial_card" ou "split_hero").
-4. Quando o cliente pedir para CRIAR uma arte/banner/cartaz/convite do zero (sem foto anexada):
-   - Preencha "headline", "subheadline", "badgeText", "ctaText" e "footerText" com textos fortes e curtos prontos para divulgação, escolha "decorativeMotif" e "emblemType" adequados ao tema.`;
+1. Sempre devolva cores em hexadecimal válido (#RRGGBB) harmoniosas e de alto contraste.
+2. Escolha o "aspectRatio" conforme o pedido: "9:16" (Stories/Status/Vertical), "16:9" (Capa/Banner/Horizontal), "4:5" (Feed vertical), "1:1" (Quadrado).
+3. **ESCREVER NA FOTO COM FIDELIDADE TOTAL:** quando o cliente pedir para escrever uma frase, nome, data, versículo ou telefone na foto, coloque o texto EXATO solicitado pelo cliente em "headline" (e complementos em "subheadline", "badgeText", "ctaText" ou "footerText"). Nunca ignore nem distorça o texto que o cliente pediu para escrever!
+4. Escolha "textPosition" ("top" se pedir em cima/topo, "center" se pedir no meio/centro, "bottom" se pedir embaixo/rodapé), "fontStyle" ("editorial" elegante, "modern" limpo ou "impact" forte em destaque) e "fontScale" (0.8 a 1.35).
+5. Quando o cliente enviar uma FOTO para modificar:
+   - Analise a foto visualmente e ajuste "brightness", "contrast", "saturate" (0 para preto e branco até 1.6 vibrante), "sepia", "hueRotate", "vignette", "tintColor" e "tintOpacity".
+   - Se o cliente pedir "sem texto" ou apenas melhorar a fotografia, deixe "headline", "subheadline", "badgeText", "ctaText" e "footerText" vazios ("").
+6. Quando o cliente pedir para CRIAR uma arte/banner/cartaz do zero (sem foto anexada), preencha textos fortes e curtos, "decorativeMotif" e "emblemType" adequados ao tema.`;
 
 const VERCEL_AI_GATEWAY_URL = 'https://ai-gateway.vercel.sh/v1/chat/completions';
 const GATEWAY_MODELS = ['google/gemini-2.5-flash', 'google/gemini-2.5-flash-lite'] as const;
@@ -800,7 +828,10 @@ async function generateWithConfiguredAi(params: {
   attachment: DukeChatAttachment | null;
   responseSchema?: Record<string, unknown>;
   expectJson: boolean;
-}): Promise<string> {
+  useWebSearch?: boolean;
+  useUrlContext?: boolean;
+  deepThinking?: boolean;
+}): Promise<{ text: string; sources: DukeWebSource[] }> {
   const {
     geminiKey,
     gatewayToken,
@@ -810,9 +841,13 @@ async function generateWithConfiguredAi(params: {
     attachment,
     responseSchema,
     expectJson,
+    useWebSearch,
+    useUrlContext,
+    deepThinking,
   } = params;
 
   let text: string | undefined;
+  let sources: DukeWebSource[] = [];
   let lastError: unknown = null;
 
   if (geminiKey) {
@@ -838,14 +873,26 @@ async function generateWithConfiguredAi(params: {
       });
     }
 
-    const modelAttempts: Array<{ model: string; lowThinking: boolean }> = [
-      { model: 'gemini-4-hydrogen', lowThinking: true },
-      { model: 'gemini-3.1-flash-lite', lowThinking: false },
-      { model: 'gemini-2.5-flash', lowThinking: false },
-    ];
+    const builtInTools: Array<Record<string, unknown>> = [];
+    if (!expectJson && useWebSearch) builtInTools.push({ googleSearch: {} });
+    if (!expectJson && useUrlContext) builtInTools.push({ urlContext: {} });
 
-    for (let i = 0; i < modelAttempts.length; i += 1) {
-      const attempt = modelAttempts[i];
+    const attemptConfigs: Array<{ model: string; supportsThinking: boolean; useTools: boolean }> =
+      builtInTools.length > 0
+        ? [
+            { model: 'gemini-4-hydrogen', supportsThinking: true, useTools: true },
+            { model: 'gemini-2.5-flash', supportsThinking: false, useTools: true },
+            { model: 'gemini-4-hydrogen', supportsThinking: true, useTools: false },
+            { model: 'gemini-3.1-flash-lite', supportsThinking: false, useTools: false },
+          ]
+        : [
+            { model: 'gemini-4-hydrogen', supportsThinking: true, useTools: false },
+            { model: 'gemini-3.1-flash-lite', supportsThinking: false, useTools: false },
+            { model: 'gemini-2.5-flash', supportsThinking: false, useTools: false },
+          ];
+
+    for (let i = 0; i < attemptConfigs.length; i += 1) {
+      const attempt = attemptConfigs[i];
       try {
         const response = await ai.models.generateContent({
           model: attempt.model,
@@ -854,22 +901,47 @@ async function generateWithConfiguredAi(params: {
             systemInstruction,
             ...(expectJson ? { responseMimeType: 'application/json' } : {}),
             ...(responseSchema ? { responseSchema } : {}),
-            ...(attempt.lowThinking
-              ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+            ...(attempt.supportsThinking
+              ? {
+                  thinkingConfig: {
+                    thinkingLevel: deepThinking ? ThinkingLevel.HIGH : ThinkingLevel.LOW,
+                  },
+                }
               : {}),
+            ...(attempt.useTools && builtInTools.length > 0 ? { tools: builtInTools } : {}),
           },
         });
         if (response.text) {
           text = expectJson ? extractJsonObject(response.text) : response.text.trim();
+          const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+          if (Array.isArray(chunks)) {
+            const seen = new Set<string>();
+            sources = chunks
+              .map((c) => {
+                const web = (c as { web?: { uri?: string; title?: string } })?.web;
+                if (!web?.uri || seen.has(web.uri)) return null;
+                seen.add(web.uri);
+                return {
+                  uri: web.uri,
+                  title: (web.title || web.uri).slice(0, 120),
+                };
+              })
+              .filter((item): item is DukeWebSource => Boolean(item))
+              .slice(0, 6);
+          }
           break;
         }
       } catch (err) {
         lastError = err;
+        console.warn(
+          `[duke-ai] attempt ${attempt.model} (tools=${attempt.useTools}) failed:`,
+          err instanceof Error ? err.message : String(err)
+        );
         if (isAuthError(err)) {
           break;
         }
-        if (i < modelAttempts.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 400));
+        if (i < attemptConfigs.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 350));
         }
       }
     }
@@ -898,7 +970,7 @@ async function generateWithConfiguredAi(params: {
     throw err;
   }
 
-  return text;
+  return { text, sources };
 }
 
 export async function runDukeEventChat(body: DukeChatRequestBody): Promise<DukeChatResult> {
@@ -941,8 +1013,16 @@ export async function runDukeEventChat(body: DukeChatRequestBody): Promise<DukeC
       : `=== ARQUIVO ANEXADO PELO CLIENTE ===\nNome: ${attachment.name} (${attachment.mimeType}).`
     : '';
 
-  // MODE 1: FREE CHATGPT (TEXT + CODE + MULTIMODAL ANALYSIS)
+  // MODE 1: FREE CHATGPT (TEXT + CODE + LIVE WEB SEARCH + URL READER + MULTIMODAL ANALYSIS)
   if (resolvedMode === 'chat') {
+    const hasUrlInMessage = /https?:\/\/[^\s]+/i.test(userMessage);
+    const autoNeedsWeb =
+      /\b(hoje|agora|cotacao|dolar|bitcoin|noticias|noticia|previsao do tempo|pesquise|pesquisa na internet|busca na web|quem ganhou|atualizado|preco atual)\b/i.test(
+        userMessage.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      );
+    const useWebSearch = Boolean(body.webSearch || autoNeedsWeb);
+    const useUrlContext = hasUrlInMessage;
+
     const promptText = [
       historyBlock ? `=== HISTÓRICO DA CONVERSA ===\n${historyBlock}\n` : '',
       attachmentTextNote ? `${attachmentTextNote}\n` : '',
@@ -952,7 +1032,7 @@ export async function runDukeEventChat(body: DukeChatRequestBody): Promise<DukeC
       .filter(Boolean)
       .join('\n');
 
-    const replyText = await generateWithConfiguredAi({
+    const { text: replyText, sources } = await generateWithConfiguredAi({
       geminiKey,
       gatewayToken,
       systemInstruction: SYSTEM_INSTRUCTION_CHAT,
@@ -960,20 +1040,24 @@ export async function runDukeEventChat(body: DukeChatRequestBody): Promise<DukeC
       promptText,
       attachment,
       expectJson: false,
+      useWebSearch,
+      useUrlContext,
+      deepThinking: Boolean(body.deepThinking),
     });
 
     return {
       modeUsed: 'chat',
       reply: clampString(replyText, 'Pronto! Como posso continuar te ajudando?', 12000),
       shouldPublish: false,
+      sources: sources.length > 0 ? sources : undefined,
     };
   }
 
-  // MODE 2: AI IMAGE CREATION & PHOTO REFORMULATION STUDIO
+  // MODE 2: AI IMAGE CREATION & WRITE-ON-PHOTO / REFORMULATION STUDIO
   if (resolvedMode === 'image') {
     const promptText = [
       hasImageAttachment
-        ? '=== MODO: REFORMULAR FOTO ENVIADA PELO CLIENTE ===\nAnalise visualmente a foto anexada e gere um projeto completo de reformulação visual (cor, iluminação, enquadramento, moldura e textos se solicitados).'
+        ? '=== MODO: ESCREVER NA FOTO & MODIFICAR IMAGEM ENVIADA ===\nAnalise visualmente a foto anexada. Escreva exatamente o texto solicitado pelo cliente na posição certa e aplique as modificações visuais pedidas (iluminação, cores, contraste, moldura, formato).'
         : '=== MODO: CRIAR ARTE / IMAGEM DO ZERO ===\nCrie uma arte visual profissional em alta resolução com cores, emblema, moldura e tipografia exatamente como o cliente pediu.',
       '',
       historyBlock ? `=== HISTÓRICO RECENTE ===\n${historyBlock}\n` : '',
@@ -989,7 +1073,7 @@ export async function runDukeEventChat(body: DukeChatRequestBody): Promise<DukeC
       .filter(Boolean)
       .join('\n');
 
-    const rawJson = await generateWithConfiguredAi({
+    const { text: rawJson } = await generateWithConfiguredAi({
       geminiKey,
       gatewayToken,
       systemInstruction: SYSTEM_INSTRUCTION_IMAGE,
@@ -998,6 +1082,7 @@ export async function runDukeEventChat(body: DukeChatRequestBody): Promise<DukeC
       attachment,
       responseSchema: DUKE_IMAGE_RESPONSE_SCHEMA,
       expectJson: true,
+      deepThinking: Boolean(body.deepThinking),
     });
 
     let parsed: { reply?: unknown; imageDesign?: unknown };
@@ -1013,8 +1098,8 @@ export async function runDukeEventChat(body: DukeChatRequestBody): Promise<DukeC
     const reply = clampString(
       parsed.reply,
       hasImageAttachment
-        ? `Pronto! Reformulei sua imagem no estilo "${imageDesign.title}". Você pode comparar Antes/Depois, baixar em PNG HD ou pedir novos ajustes!`
-        : `Pronto! Criei a arte "${imageDesign.title}" em alta resolução. Você pode baixar em PNG HD, usar como capa de evento ou pedir mudanças nas cores e textos!`,
+        ? `Pronto! Modifiquei sua foto ("${imageDesign.title}"). Você pode comparar Antes/Depois, editar o texto ou filtros ao vivo no Estúdio Imagem e baixar em PNG HD!`
+        : `Pronto! Criei a arte "${imageDesign.title}" em alta resolução. Você pode ajustar textos e cores ao vivo no Estúdio Imagem ou baixar em PNG HD!`,
       2500
     );
 
@@ -1050,7 +1135,7 @@ export async function runDukeEventChat(body: DukeChatRequestBody): Promise<DukeC
     .filter(Boolean)
     .join('\n');
 
-  const rawJson = await generateWithConfiguredAi({
+  const { text: rawJson } = await generateWithConfiguredAi({
     geminiKey,
     gatewayToken,
     systemInstruction: SYSTEM_INSTRUCTION_EVENT,
@@ -1059,6 +1144,7 @@ export async function runDukeEventChat(body: DukeChatRequestBody): Promise<DukeC
     attachment,
     responseSchema: DUKE_EVENT_RESPONSE_SCHEMA,
     expectJson: true,
+    deepThinking: Boolean(body.deepThinking),
   });
 
   let parsed: { reply?: unknown; shouldPublish?: unknown; event?: unknown };

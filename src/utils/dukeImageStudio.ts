@@ -436,13 +436,34 @@ export async function renderDukeImageStudio(
       ctx.fillRect(0, 0, width, height);
     }
 
-    if (spec.layout !== 'framed_poster' && spec.layout !== 'split_hero') {
-      const scrim = ctx.createLinearGradient(0, height * 0.35, 0, height);
-      scrim.addColorStop(0, 'rgba(0,0,0,0.06)');
-      scrim.addColorStop(0.55, 'rgba(0,0,0,0.52)');
-      scrim.addColorStop(1, 'rgba(0,0,0,0.88)');
-      ctx.fillStyle = scrim;
-      ctx.fillRect(0, height * 0.35, width, height * 0.65);
+    const textPos = spec.textPosition || 'bottom';
+    const hasAnyOverlayText = Boolean(
+      spec.badgeText?.trim() || spec.headline?.trim() || spec.subheadline?.trim() || spec.ctaText?.trim()
+    );
+
+    if (hasAnyOverlayText && spec.layout !== 'framed_poster' && spec.layout !== 'split_hero') {
+      if (textPos === 'top') {
+        const topScrim = ctx.createLinearGradient(0, 0, 0, height * 0.56);
+        topScrim.addColorStop(0, 'rgba(0,0,0,0.84)');
+        topScrim.addColorStop(0.55, 'rgba(0,0,0,0.42)');
+        topScrim.addColorStop(1, 'rgba(0,0,0,0.02)');
+        ctx.fillStyle = topScrim;
+        ctx.fillRect(0, 0, width, height * 0.56);
+      } else if (textPos === 'center') {
+        const midScrim = ctx.createLinearGradient(0, height * 0.16, 0, height * 0.84);
+        midScrim.addColorStop(0, 'rgba(0,0,0,0.06)');
+        midScrim.addColorStop(0.5, 'rgba(0,0,0,0.68)');
+        midScrim.addColorStop(1, 'rgba(0,0,0,0.08)');
+        ctx.fillStyle = midScrim;
+        ctx.fillRect(0, height * 0.16, width, height * 0.68);
+      } else {
+        const scrim = ctx.createLinearGradient(0, height * 0.35, 0, height);
+        scrim.addColorStop(0, 'rgba(0,0,0,0.05)');
+        scrim.addColorStop(0.55, 'rgba(0,0,0,0.52)');
+        scrim.addColorStop(1, 'rgba(0,0,0,0.88)');
+        ctx.fillStyle = scrim;
+        ctx.fillRect(0, height * 0.35, width, height * 0.65);
+      }
     }
   } else {
     // Creation Mode: Rich Geometric Studio Atmosphere + Emblem
@@ -475,12 +496,28 @@ export async function renderDukeImageStudio(
   const padX = Math.round(width * 0.085);
   const maxTextW = width - padX * 2;
   const baseUnit = Math.min(width, height);
-  const headlineSize = Math.round(baseUnit * (spec.aspectRatio === '16:9' ? 0.075 : 0.068));
-  const subSize = Math.round(baseUnit * 0.032);
+  const fontScale = Math.max(0.7, Math.min(1.45, spec.fontScale ?? 1));
+  const headlineSize = Math.round(
+    baseUnit * (spec.aspectRatio === '16:9' ? 0.075 : 0.068) * fontScale
+  );
+  const subSize = Math.round(baseUnit * 0.032 * Math.min(1.25, fontScale));
   const badgeSize = Math.round(baseUnit * 0.024);
 
+  const headlineFontFamily =
+    spec.fontStyle === 'impact'
+      ? '"Impact", "Arial Black", system-ui, sans-serif'
+      : spec.fontStyle === 'modern'
+        ? '"Inter", system-ui, -apple-system, sans-serif'
+        : '"Georgia", "Playfair Display", serif';
+
+  const textPos = spec.textPosition || (hasPhoto ? 'bottom' : 'center');
+
   const hasTextBlock = Boolean(
-    spec.badgeText?.trim() || spec.headline?.trim() || spec.subheadline?.trim() || spec.ctaText?.trim()
+    spec.badgeText?.trim() ||
+      spec.headline?.trim() ||
+      spec.subheadline?.trim() ||
+      spec.ctaText?.trim() ||
+      spec.footerText?.trim()
   );
 
   if (hasTextBlock) {
@@ -495,12 +532,12 @@ export async function renderDukeImageStudio(
       const bw = Math.min(maxTextW, ctx.measureText(badgeStr).width + 44);
       const bh = Math.round(badgeSize * 2.15);
       const bx = (width - bw) / 2;
-      const by = hasPhoto && spec.layout === 'framed_poster' ? height * 0.062 : height * 0.085;
+      const by = hasPhoto && spec.layout === 'framed_poster' ? height * 0.062 : height * 0.082;
 
       drawRoundedRect(ctx, bx, by, bw, bh, bh / 2);
-      ctx.fillStyle = hexToRgba(accent, 0.22);
+      ctx.fillStyle = hexToRgba(accent, 0.24);
       ctx.fill();
-      ctx.strokeStyle = hexToRgba(accent, 0.85);
+      ctx.strokeStyle = hexToRgba(accent, 0.88);
       ctx.lineWidth = 2;
       ctx.stroke();
 
@@ -508,34 +545,53 @@ export async function renderDukeImageStudio(
       ctx.fillText(badgeStr, width / 2, by + bh / 2 + 1);
     }
 
-    // Main Headline Position
-    let cursorY = hasPhoto
-      ? spec.layout === 'framed_poster'
-        ? height * 0.77
-        : spec.layout === 'split_hero'
-          ? height * 0.67
-          : height * 0.67
-      : spec.emblemType && spec.emblemType !== 'none'
-        ? height * 0.48
-        : height * 0.42;
+    // Main Headline Position honoring user/AI textPosition
+    let cursorY = height * 0.66;
+    if (hasPhoto) {
+      if (spec.layout === 'framed_poster') {
+        cursorY = height * 0.77;
+      } else if (spec.layout === 'split_hero') {
+        cursorY = height * 0.67;
+      } else if (textPos === 'top') {
+        cursorY = spec.badgeText?.trim() ? height * 0.2 : height * 0.14;
+      } else if (textPos === 'center') {
+        cursorY = height * 0.44;
+      } else {
+        cursorY = height * 0.66;
+      }
+    } else {
+      cursorY =
+        textPos === 'top'
+          ? height * 0.24
+          : textPos === 'bottom'
+            ? height * 0.62
+            : spec.emblemType && spec.emblemType !== 'none'
+              ? height * 0.48
+              : height * 0.42;
+    }
 
     if (spec.layout === 'editorial_card' && hasPhoto) {
       const boxH = height * 0.34;
-      const boxY = height - boxH - height * 0.07;
+      const boxY =
+        textPos === 'top'
+          ? height * 0.12
+          : textPos === 'center'
+            ? (height - boxH) / 2
+            : height - boxH - height * 0.07;
       drawRoundedRect(ctx, padX * 0.72, boxY, width - padX * 1.44, boxH, 26);
-      ctx.fillStyle = 'rgba(4, 14, 10, 0.82)';
+      ctx.fillStyle = 'rgba(4, 14, 10, 0.84)';
       ctx.fill();
-      ctx.strokeStyle = hexToRgba(accent, 0.55);
+      ctx.strokeStyle = hexToRgba(accent, 0.6);
       ctx.lineWidth = 2;
       ctx.stroke();
       cursorY = boxY + boxH * 0.28;
     }
 
     if (spec.headline?.trim()) {
-      ctx.font = `800 ${headlineSize}px "Georgia", "Playfair Display", serif`;
+      ctx.font = `800 ${headlineSize}px ${headlineFontFamily}`;
       ctx.fillStyle = textPrimary;
-      ctx.shadowColor = 'rgba(0,0,0,0.68)';
-      ctx.shadowBlur = 18;
+      ctx.shadowColor = 'rgba(0,0,0,0.78)';
+      ctx.shadowBlur = 20;
       ctx.shadowOffsetY = 4;
       const lines = wrapLines(ctx, spec.headline.trim(), maxTextW, 3);
       const lineH = Math.round(headlineSize * 1.15);
@@ -546,7 +602,7 @@ export async function renderDukeImageStudio(
     }
 
     if (spec.subheadline?.trim()) {
-      ctx.shadowBlur = 10;
+      ctx.shadowBlur = 12;
       ctx.font = `500 ${subSize}px "Inter", system-ui, -apple-system, sans-serif`;
       ctx.fillStyle = textMuted;
       const subLines = wrapLines(ctx, spec.subheadline.trim(), maxTextW * 0.92, 3);
@@ -579,7 +635,7 @@ export async function renderDukeImageStudio(
       ctx.shadowBlur = 6;
       const footerFont = Math.round(baseUnit * 0.021);
       ctx.font = `600 ${footerFont}px "Inter", system-ui, -apple-system, sans-serif`;
-      ctx.fillStyle = hexToRgba(textMuted, 0.85);
+      ctx.fillStyle = hexToRgba(textMuted, 0.9);
       ctx.fillText(spec.footerText.trim().slice(0, 84), width / 2, height - height * 0.052);
     }
 

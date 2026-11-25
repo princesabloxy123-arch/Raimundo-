@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { Check, Code2, Copy } from 'lucide-react';
+import { Check, Code2, Copy, Download, ExternalLink, Eye, EyeOff, Globe } from 'lucide-react';
+import type { DukeWebSource } from '../types';
 
 interface DukeRichMessageProps {
   content: string;
+  sources?: DukeWebSource[];
 }
 
 interface Segment {
@@ -23,7 +25,7 @@ function parseSegments(raw: string): Segment[] {
     }
     segments.push({
       type: 'code',
-      language: (match[1] || 'codigo').trim(),
+      language: (match[1] || 'codigo').trim().toLowerCase(),
       content: match[2].replace(/\n$/, ''),
     });
     lastIndex = regex.lastIndex;
@@ -76,6 +78,15 @@ function renderInlineMarkdown(line: string, keyPrefix: string): React.ReactNode[
 
 const CodeBlockCard: React.FC<{ language: string; code: string }> = ({ language, code }) => {
   const [copied, setCopied] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+
+  const isHtmlPreviewable =
+    language === 'html' ||
+    language === 'htm' ||
+    language === 'svg' ||
+    code.trim().startsWith('<!DOCTYPE html') ||
+    code.trim().startsWith('<html') ||
+    code.trim().startsWith('<svg');
 
   const handleCopy = async () => {
     try {
@@ -87,30 +98,90 @@ const CodeBlockCard: React.FC<{ language: string; code: string }> = ({ language,
     }
   };
 
+  const handleDownloadCode = () => {
+    const ext =
+      language === 'html' || language === 'htm'
+        ? 'html'
+        : language === 'css'
+          ? 'css'
+          : language === 'javascript' || language === 'js'
+            ? 'js'
+            : language === 'typescript' || language === 'ts'
+              ? 'ts'
+              : language === 'tsx'
+                ? 'tsx'
+                : language === 'python' || language === 'py'
+                  ? 'py'
+                  : language === 'svg'
+                    ? 'svg'
+                    : 'txt';
+    const blob = new Blob([code], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `robo-duque-codigo.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="my-2 rounded-xl overflow-hidden border border-amber-400/35 bg-[#030a07] shadow-lg">
-      <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-[#071811] border-b border-amber-400/20">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 bg-[#071811] border-b border-amber-400/20">
         <span className="inline-flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-wider text-amber-300">
           <Code2 className="w-3.5 h-3.5" />
           {language || 'código'}
         </span>
-        <button
-          type="button"
-          onClick={() => void handleCopy()}
-          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-400/15 hover:bg-amber-400/30 border border-amber-400/40 text-[11px] font-semibold text-amber-200 cursor-pointer transition-colors"
-        >
-          {copied ? <Check className="w-3 h-3 text-emerald-300" /> : <Copy className="w-3 h-3" />}
-          <span>{copied ? 'Copiado!' : 'Copiar Código'}</span>
-        </button>
+        <div className="flex items-center gap-1.5">
+          {isHtmlPreviewable && (
+            <button
+              type="button"
+              onClick={() => setShowPreview((p) => !p)}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-700/80 hover:bg-emerald-600 text-[11px] font-semibold text-white cursor-pointer transition-colors"
+            >
+              {showPreview ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+              <span>{showPreview ? 'Ocultar Prévia' : 'Visualizar Ao Vivo'}</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleDownloadCode}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-black/50 hover:bg-black/80 border border-amber-400/30 text-[11px] font-semibold text-emerald-100 cursor-pointer transition-colors"
+          >
+            <Download className="w-3 h-3 text-amber-300" />
+            <span>Baixar</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleCopy()}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-400/15 hover:bg-amber-400/30 border border-amber-400/40 text-[11px] font-semibold text-amber-200 cursor-pointer transition-colors"
+          >
+            {copied ? <Check className="w-3 h-3 text-emerald-300" /> : <Copy className="w-3 h-3" />}
+            <span>{copied ? 'Copiado!' : 'Copiar'}</span>
+          </button>
+        </div>
       </div>
-      <pre className="p-3 overflow-x-auto text-xs font-mono leading-relaxed text-emerald-100 conae-scroll">
+
+      {showPreview && isHtmlPreviewable && (
+        <div className="border-b border-amber-400/25 bg-white">
+          <iframe
+            title="Prévia Ao Vivo do Código"
+            sandbox="allow-scripts"
+            srcDoc={code}
+            className="w-full h-72 border-0 block"
+          />
+        </div>
+      )}
+
+      <pre className="p-3 overflow-x-auto text-xs font-mono leading-relaxed text-emerald-100 conae-scroll max-h-80">
         <code>{code}</code>
       </pre>
     </div>
   );
 };
 
-export const DukeRichMessage: React.FC<DukeRichMessageProps> = ({ content }) => {
+export const DukeRichMessage: React.FC<DukeRichMessageProps> = ({ content, sources }) => {
   const segments = parseSegments(content);
 
   return (
@@ -161,6 +232,29 @@ export const DukeRichMessage: React.FC<DukeRichMessageProps> = ({ content }) => 
           </div>
         );
       })}
+
+      {sources && sources.length > 0 && (
+        <div className="pt-2 mt-2 border-t border-amber-400/20 space-y-1.5">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-300">
+            <Globe className="w-3 h-3" />
+            <span>Fontes encontradas na Web</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {sources.map((src, idx) => (
+              <a
+                key={`${src.uri}_${idx}`}
+                href={src.uri}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-black/50 hover:bg-amber-400/15 border border-amber-400/30 text-[11px] text-emerald-100 hover:text-amber-200 max-w-full"
+              >
+                <span className="truncate max-w-[180px]">{src.title}</span>
+                <ExternalLink className="w-2.5 h-2.5 shrink-0 text-amber-300" />
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

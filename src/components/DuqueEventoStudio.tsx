@@ -14,6 +14,7 @@ import {
   AlertCircle,
   ArrowLeft,
   ArrowUp,
+  Brain,
   Check,
   CheckCircle2,
   Code2,
@@ -34,12 +35,18 @@ import {
   MicOff,
   Palette,
   Paperclip,
+  Plus,
   QrCode,
   RefreshCw,
   Rocket,
+  Search,
+  SlidersHorizontal,
   Sparkles,
   Trash2,
+  Type as TypeIcon,
   User as UserIcon,
+  Volume2,
+  VolumeX,
   Wand2,
   X,
 } from 'lucide-react';
@@ -51,8 +58,11 @@ import type {
   DukeEventSpec,
   DukeEventTheme,
   DukeGeneratedAsset,
+  DukeImageAspectRatio,
   DukeImageDesignSpec,
+  DukeImageFrameStyle,
   DukeStudioMode,
+  DukeWebSource,
   UserProfile,
 } from '../types';
 import { compressDataUrlForFirestoreBanner, renderDukeImageStudio } from '../utils/dukeImageStudio';
@@ -73,19 +83,19 @@ const CONAE_AI_BRAIN_3D = '/src/assets/images/conae_ai_brain_3d_1795638395875.jp
 
 const STARTER_PROMPTS: Array<{ label: string; mode: DukeStudioMode; prompt: string }> = [
   {
-    label: 'Criar Arte / Cartaz HD',
+    label: 'Criar Arte / Escrever na Foto HD',
     mode: 'image',
     prompt:
       'Crie um cartaz oficial elegante em verde esmeralda e dourado para o Grande Congresso CONAE 2026 em Goiânia, formato quadrado 1:1, com selo VIP e chamada para inscrição.',
   },
   {
-    label: 'Texto & Legenda estilo ChatGPT',
+    label: 'Escrever Texto & Legenda Profissional',
     mode: 'chat',
     prompt:
       'Escreva um texto impactante de divulgação para WhatsApp e Instagram convidando pastores, líderes e empresários para o nosso próximo encontro oficial da CONAE.',
   },
   {
-    label: 'Gerar Código Pronto (HTML / Site)',
+    label: 'Gerar Código com Prévia Ao Vivo',
     mode: 'chat',
     prompt:
       'Gere um código HTML + CSS completo de um cartão de convite digital elegante em verde escuro e dourado com botão de confirmação no WhatsApp.',
@@ -101,7 +111,7 @@ const STARTER_PROMPTS: Array<{ label: string; mode: DukeStudioMode; prompt: stri
 const MODE_OPTIONS: Array<{ id: DukeStudioMode; label: string }> = [
   { id: 'auto', label: 'Automático' },
   { id: 'chat', label: 'Texto & Código' },
-  { id: 'image', label: 'Imagem / Reformular' },
+  { id: 'image', label: 'Foto & Arte' },
   { id: 'event', label: 'Evento & Link' },
 ];
 
@@ -197,6 +207,14 @@ async function compressImageDataUrl(file: File): Promise<{ dataUrl: string; base
   return { dataUrl, base64Data };
 }
 
+const WELCOME_MESSAGE: DukeChatMessage = {
+  id: 'welcome_duke',
+  role: 'assistant',
+  createdAt: new Date().toISOString(),
+  content:
+    'Olá! Sou o **Robô Duque da CONAE**, seu estúdio completo de Inteligência Artificial. Posso **pesquisar na web ao vivo**, **pensar em profundidade**, escrever **textos e códigos com prévia ao vivo**, **escrever na sua foto e modificar imagens em tempo real**, e montar **eventos completos com link fixo**. Como posso te ajudar agora?',
+};
+
 export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
   firebaseUser,
   profile,
@@ -205,17 +223,11 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
   onBackToConae,
   onOpenPublishedEvent,
 }) => {
-  const [messages, setMessages] = useState<DukeChatMessage[]>([
-    {
-      id: 'welcome_duke',
-      role: 'assistant',
-      createdAt: new Date().toISOString(),
-      content:
-        'Olá! Sou o Robô Duque da CONAE — seu estúdio completo de Inteligência Artificial no estilo ChatGPT. Posso criar **textos**, gerar **códigos prontos**, **criar artes e reformular suas fotos** em alta definição, e montar **eventos completos com link fixo**. Como posso te ajudar agora?',
-    },
-  ]);
+  const [messages, setMessages] = useState<DukeChatMessage[]>([WELCOME_MESSAGE]);
 
   const [studioMode, setStudioMode] = useState<DukeStudioMode>('auto');
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [deepThinkingEnabled, setDeepThinkingEnabled] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [sending, setSending] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
@@ -230,7 +242,9 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
   const [generatedImages, setGeneratedImages] = useState<DukeGeneratedAsset[]>([]);
   const [activeImageId, setActiveImageId] = useState<string | null>(null);
   const [showOriginalCompare, setShowOriginalCompare] = useState(false);
+  const [updatingLiveImage, setUpdatingLiveImage] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
+  const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
   const [appliedBannerId, setAppliedBannerId] = useState<string | null>(null);
 
   const [myEvents, setMyEvents] = useState<DukeEventRecord[]>([]);
@@ -253,11 +267,19 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const liveRenderSeqRef = useRef(0);
 
   useEffect(() => {
     return () => {
       try {
         recognitionRef.current?.stop();
+      } catch {
+        // ignore cleanup
+      }
+      try {
+        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+        }
       } catch {
         // ignore cleanup
       }
@@ -584,6 +606,8 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
         body: JSON.stringify({
           message: text,
           mode: effectiveMode,
+          webSearch: webSearchEnabled,
+          deepThinking: deepThinkingEnabled,
           history: nextHistory.slice(-10).map((m) => ({ role: m.role, content: m.content })),
           currentEvent,
           attachment: activeAttachment
@@ -605,6 +629,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
         shouldPublish?: boolean;
         event?: DukeEventSpec;
         imageDesign?: DukeImageDesignSpec;
+        sources?: DukeWebSource[];
       };
       try {
         payload = JSON.parse(rawText) as {
@@ -614,6 +639,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
           shouldPublish?: boolean;
           event?: DukeEventSpec;
           imageDesign?: DukeImageDesignSpec;
+          sources?: DukeWebSource[];
         };
       } catch {
         throw new Error(
@@ -685,6 +711,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
         createdAt: new Date().toISOString(),
         publishedUrl,
         generatedImage,
+        sources: Array.isArray(payload.sources) && payload.sources.length > 0 ? payload.sources : undefined,
       };
       setMessages((prev) => [...prev, aiMsg]);
     } catch (err) {
@@ -794,6 +821,107 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
       window.setTimeout(() => setCopiedMsgId(null), 2000);
     } catch {
       // ignore
+    }
+  };
+
+  const handleToggleSpeakMessage = (msgId: string, rawText: string) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      setVoiceNotice('Seu navegador não suporta leitura por voz neste dispositivo.');
+      return;
+    }
+
+    if (speakingMsgId === msgId) {
+      window.speechSynthesis.cancel();
+      setSpeakingMsgId(null);
+      return;
+    }
+
+    try {
+      window.speechSynthesis.cancel();
+      const plain = rawText
+        .replace(/```[\s\S]*?```/g, ' Código disponível na tela. ')
+        .replace(/[#*_`>~]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (!plain) return;
+      const utterance = new SpeechSynthesisUtterance(plain);
+      utterance.lang = 'pt-BR';
+      utterance.rate = 1.03;
+      utterance.onend = () => setSpeakingMsgId(null);
+      utterance.onerror = () => setSpeakingMsgId(null);
+      setSpeakingMsgId(msgId);
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      setSpeakingMsgId(null);
+    }
+  };
+
+  const handleNewChat = () => {
+    try {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      recognitionRef.current?.stop();
+    } catch {
+      // ignore
+    }
+    setSpeakingMsgId(null);
+    setIsRecordingVoice(false);
+    setApiError(null);
+    setVoiceNotice(null);
+    setStagedAttachment(null);
+    setInputValue('');
+    setMessages([
+      {
+        ...WELCOME_MESSAGE,
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+  };
+
+  const handleLiveUpdateImageSpec = async (patch: Partial<DukeImageDesignSpec>) => {
+    if (!activeImageAsset) return;
+    const targetId = activeImageAsset.id;
+    const nextSpec: DukeImageDesignSpec = {
+      ...activeImageAsset.designSpec,
+      ...patch,
+    };
+
+    const seq = ++liveRenderSeqRef.current;
+    setUpdatingLiveImage(true);
+    setShowOriginalCompare(false);
+    setGeneratedImages((prev) =>
+      prev.map((img) =>
+        img.id === targetId
+          ? {
+              ...img,
+              aspectRatio: nextSpec.aspectRatio,
+              title: nextSpec.headline?.trim() || nextSpec.title || img.title,
+              designSpec: nextSpec,
+            }
+          : img
+      )
+    );
+
+    try {
+      const renderedPng = await renderDukeImageStudio(nextSpec, activeImageAsset.originalDataUrl);
+      if (liveRenderSeqRef.current !== seq) return;
+      setGeneratedImages((prev) =>
+        prev.map((img) =>
+          img.id === targetId
+            ? {
+                ...img,
+                resultDataUrl: renderedPng,
+                aspectRatio: nextSpec.aspectRatio,
+                designSpec: nextSpec,
+              }
+            : img
+        )
+      );
+    } finally {
+      if (liveRenderSeqRef.current === seq) {
+        setUpdatingLiveImage(false);
+      }
     }
   };
 
@@ -957,6 +1085,16 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
+            onClick={handleNewChat}
+            title="Iniciar nova conversa limpa"
+            className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg border bg-black/40 border-amber-400/25 text-emerald-100 hover:bg-black/65 hover:border-amber-400/55 text-xs font-semibold cursor-pointer whitespace-nowrap"
+          >
+            <Plus className="w-3.5 h-3.5 text-amber-300" />
+            <span className="hidden sm:inline">Novo Chat</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => {
               setRightTab('saved');
               setMobilePane('workspace');
@@ -1091,7 +1229,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                   )}
 
                   {msg.role === 'assistant' ? (
-                    <DukeRichMessage content={msg.content} />
+                    <DukeRichMessage content={msg.content} sources={msg.sources} />
                   ) : (
                     <p className="whitespace-pre-line">{msg.content}</p>
                   )}
@@ -1140,7 +1278,23 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                   )}
 
                   {msg.role === 'assistant' && msg.id !== 'welcome_duke' && (
-                    <div className="flex items-center justify-end pt-0.5">
+                    <div className="flex items-center justify-end gap-3 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleSpeakMessage(msg.id, msg.content)}
+                        className={`inline-flex items-center gap-1 text-[10px] font-semibold cursor-pointer ${
+                          speakingMsgId === msg.id
+                            ? 'text-amber-300'
+                            : 'text-emerald-200/70 hover:text-amber-300'
+                        }`}
+                      >
+                        {speakingMsgId === msg.id ? (
+                          <VolumeX className="w-3 h-3 text-amber-300" />
+                        ) : (
+                          <Volume2 className="w-3 h-3" />
+                        )}
+                        <span>{speakingMsgId === msg.id ? 'Parar áudio' : 'Ouvir'}</span>
+                      </button>
                       <button
                         type="button"
                         onClick={() => void handleCopyMessageText(msg.id, msg.content)}
@@ -1355,18 +1509,18 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                 className="w-full resize-none bg-transparent text-sm text-white focus:outline-none px-1.5 py-0.5 max-h-36"
               />
 
-              {/* Bottom Controls Row: Inserir Foto, Upload Arquivo, Microfone & Enviar */}
+              {/* Bottom Controls Row: Foto, Upload, Web Search, Deep Think, Voz & Enviar */}
               <div className="flex items-center justify-between gap-2 pt-1 border-t border-white/10">
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1 flex-wrap">
                   <button
                     type="button"
                     disabled={sending || uploadingFile}
                     onClick={() => photoInputRef.current?.click()}
-                    title="Inserir Foto"
+                    title="Inserir Foto para escrever ou modificar"
                     aria-label="Inserir foto"
-                    className="h-9 px-2.5 rounded-xl bg-black/45 hover:bg-black/75 border border-amber-400/25 hover:border-amber-400/55 text-emerald-100 hover:text-amber-200 inline-flex items-center gap-1.5 text-xs font-medium transition-colors cursor-pointer disabled:opacity-50"
+                    className="h-8 px-2 rounded-xl bg-black/45 hover:bg-black/75 border border-amber-400/25 hover:border-amber-400/55 text-emerald-100 hover:text-amber-200 inline-flex items-center gap-1 text-[11px] font-medium transition-colors cursor-pointer disabled:opacity-50"
                   >
-                    <ImagePlus className="w-4 h-4 text-amber-300 shrink-0" />
+                    <ImagePlus className="w-3.5 h-3.5 text-amber-300 shrink-0" />
                     <span className="hidden sm:inline">Foto</span>
                   </button>
 
@@ -1376,14 +1530,46 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                     onClick={() => fileInputRef.current?.click()}
                     title="Fazer Upload de Arquivo (PDF, Texto ou Imagem)"
                     aria-label="Fazer upload de arquivo"
-                    className="h-9 px-2.5 rounded-xl bg-black/45 hover:bg-black/75 border border-amber-400/25 hover:border-amber-400/55 text-emerald-100 hover:text-amber-200 inline-flex items-center gap-1.5 text-xs font-medium transition-colors cursor-pointer disabled:opacity-50"
+                    className="h-8 px-2 rounded-xl bg-black/45 hover:bg-black/75 border border-amber-400/25 hover:border-amber-400/55 text-emerald-100 hover:text-amber-200 inline-flex items-center gap-1 text-[11px] font-medium transition-colors cursor-pointer disabled:opacity-50"
                   >
                     {uploadingFile ? (
-                      <Loader2 className="w-4 h-4 animate-spin text-amber-300 shrink-0" />
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-300 shrink-0" />
                     ) : (
-                      <Paperclip className="w-4 h-4 text-amber-300 shrink-0" />
+                      <Paperclip className="w-3.5 h-3.5 text-amber-300 shrink-0" />
                     )}
-                    <span className="hidden sm:inline">Upload</span>
+                    <span className="hidden sm:inline">Arquivo</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={sending}
+                    onClick={() => setWebSearchEnabled((prev) => !prev)}
+                    title="Ativar Pesquisa Web em tempo real com fontes clicáveis"
+                    aria-pressed={webSearchEnabled}
+                    className={`h-8 px-2 rounded-xl border inline-flex items-center gap-1 text-[11px] font-semibold transition-colors cursor-pointer disabled:opacity-50 ${
+                      webSearchEnabled
+                        ? 'bg-emerald-600/80 border-emerald-300 text-white'
+                        : 'bg-black/45 hover:bg-black/75 border-amber-400/25 hover:border-amber-400/55 text-emerald-100 hover:text-amber-200'
+                    }`}
+                  >
+                    <Search className="w-3.5 h-3.5 shrink-0" />
+                    <span className="hidden sm:inline">Web</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={sending}
+                    onClick={() => setDeepThinkingEnabled((prev) => !prev)}
+                    title="Ativar Raciocínio Profundo para códigos, contratos e análises complexas"
+                    aria-pressed={deepThinkingEnabled}
+                    className={`h-8 px-2 rounded-xl border inline-flex items-center gap-1 text-[11px] font-semibold transition-colors cursor-pointer disabled:opacity-50 ${
+                      deepThinkingEnabled
+                        ? 'bg-amber-400 border-amber-300 text-neutral-950'
+                        : 'bg-black/45 hover:bg-black/75 border-amber-400/25 hover:border-amber-400/55 text-emerald-100 hover:text-amber-200'
+                    }`}
+                  >
+                    <Brain className="w-3.5 h-3.5 shrink-0" />
+                    <span className="hidden sm:inline">Pensar</span>
                   </button>
 
                   <button
@@ -1392,7 +1578,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                     onClick={handleToggleMicrophone}
                     title={isRecordingVoice ? 'Parar gravação de voz' : 'Falar no microfone'}
                     aria-label={isRecordingVoice ? 'Parar gravação de voz' : 'Falar no microfone'}
-                    className={`h-9 px-2.5 rounded-xl border inline-flex items-center gap-1.5 text-xs font-medium transition-colors cursor-pointer disabled:opacity-50 ${
+                    className={`h-8 px-2 rounded-xl border inline-flex items-center gap-1 text-[11px] font-medium transition-colors cursor-pointer disabled:opacity-50 ${
                       isRecordingVoice
                         ? 'bg-red-600/85 border-red-300 text-white'
                         : 'bg-black/45 hover:bg-black/75 border-amber-400/25 hover:border-amber-400/55 text-emerald-100 hover:text-amber-200'
@@ -1400,12 +1586,12 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                   >
                     {isRecordingVoice ? (
                       <>
-                        <MicOff className="w-4 h-4 shrink-0" />
+                        <MicOff className="w-3.5 h-3.5 shrink-0" />
                         <span>Ouvindo...</span>
                       </>
                     ) : (
                       <>
-                        <Mic className="w-4 h-4 text-emerald-300 shrink-0" />
+                        <Mic className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
                         <span className="hidden sm:inline">Voz</span>
                       </>
                     )}
@@ -1670,6 +1856,387 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                         referrerPolicy="no-referrer"
                         className="max-h-[480px] w-auto object-contain rounded-lg shadow-2xl"
                       />
+                    </div>
+
+                    {/* Live Interactive Text-on-Photo & Photo Modification Editor */}
+                    <div className="rounded-xl bg-black/45 border border-amber-400/25 p-4 space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <SlidersHorizontal className="w-4 h-4 text-amber-300" />
+                          <h3 className="text-xs font-bold uppercase tracking-wider text-amber-200">
+                            Escrever na Foto & Modificar em Tempo Real
+                          </h3>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {updatingLiveImage && (
+                            <span className="inline-flex items-center gap-1 text-[11px] text-amber-300">
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                              Atualizando...
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void handleLiveUpdateImageSpec({
+                                brightness: 1,
+                                contrast: 1,
+                                saturate: 1,
+                                sepia: 0,
+                                hueRotate: 0,
+                                vignette: 0.25,
+                                tintColor: '#000000',
+                                tintOpacity: 0,
+                                fontScale: 1,
+                              })
+                            }
+                            className="px-2.5 py-1 rounded-md bg-black/60 hover:bg-black/80 border border-white/15 text-[11px] font-semibold text-emerald-200 cursor-pointer"
+                          >
+                            Resetar Filtros
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Text Inputs directly drawn on the photo */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <label className="space-y-1 sm:col-span-2">
+                          <span className="text-[11px] font-semibold text-emerald-200/80 flex items-center gap-1">
+                            <TypeIcon className="w-3 h-3 text-amber-300" />
+                            Texto Principal na Foto (Título)
+                          </span>
+                          <input
+                            type="text"
+                            value={activeImageAsset.designSpec.headline || ''}
+                            onChange={(e) => void handleLiveUpdateImageSpec({ headline: e.target.value })}
+                            placeholder="Digite a frase para aparecer escrita na foto..."
+                            className="w-full rounded-lg bg-[#081711] border border-amber-400/30 px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400"
+                          />
+                        </label>
+
+                        <label className="space-y-1">
+                          <span className="text-[11px] font-semibold text-emerald-200/80 block">
+                            Subtítulo / Mensagem
+                          </span>
+                          <input
+                            type="text"
+                            value={activeImageAsset.designSpec.subheadline || ''}
+                            onChange={(e) => void handleLiveUpdateImageSpec({ subheadline: e.target.value })}
+                            placeholder="Opcional"
+                            className="w-full rounded-lg bg-[#081711] border border-amber-400/25 px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400"
+                          />
+                        </label>
+
+                        <label className="space-y-1">
+                          <span className="text-[11px] font-semibold text-emerald-200/80 block">
+                            Selo Superior / Etiqueta
+                          </span>
+                          <input
+                            type="text"
+                            value={activeImageAsset.designSpec.badgeText || ''}
+                            onChange={(e) => void handleLiveUpdateImageSpec({ badgeText: e.target.value })}
+                            placeholder="Ex: CONAE OFICIAL"
+                            className="w-full rounded-lg bg-[#081711] border border-amber-400/25 px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400"
+                          />
+                        </label>
+
+                        <label className="space-y-1">
+                          <span className="text-[11px] font-semibold text-emerald-200/80 block">
+                            Botão / Chamada (CTA)
+                          </span>
+                          <input
+                            type="text"
+                            value={activeImageAsset.designSpec.ctaText || ''}
+                            onChange={(e) => void handleLiveUpdateImageSpec({ ctaText: e.target.value })}
+                            placeholder="Ex: INSCREVA-SE AGORA"
+                            className="w-full rounded-lg bg-[#081711] border border-amber-400/25 px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400"
+                          />
+                        </label>
+
+                        <label className="space-y-1">
+                          <span className="text-[11px] font-semibold text-emerald-200/80 block">
+                            Rodapé / Data / WhatsApp
+                          </span>
+                          <input
+                            type="text"
+                            value={activeImageAsset.designSpec.footerText || ''}
+                            onChange={(e) => void handleLiveUpdateImageSpec({ footerText: e.target.value })}
+                            placeholder="Ex: Goiânia-GO · 2026"
+                            className="w-full rounded-lg bg-[#081711] border border-amber-400/25 px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400"
+                          />
+                        </label>
+                      </div>
+
+                      {/* Position, Font Style, Aspect Ratio, Frame & Colors */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                        <div className="space-y-1.5">
+                          <span className="text-[11px] font-semibold text-emerald-200/80 block">
+                            Posição do Texto
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {(
+                              [
+                                { id: 'top', label: 'Topo' },
+                                { id: 'center', label: 'Centro' },
+                                { id: 'bottom', label: 'Rodapé' },
+                              ] as const
+                            ).map((pos) => (
+                              <button
+                                key={pos.id}
+                                type="button"
+                                onClick={() => void handleLiveUpdateImageSpec({ textPosition: pos.id })}
+                                className={`px-2.5 py-1 rounded-md text-[11px] font-bold cursor-pointer ${
+                                  (activeImageAsset.designSpec.textPosition || 'bottom') === pos.id
+                                    ? 'bg-amber-400 text-neutral-950'
+                                    : 'bg-[#081711] text-emerald-100 border border-white/15 hover:border-amber-400/50'
+                                }`}
+                              >
+                                {pos.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <span className="text-[11px] font-semibold text-emerald-200/80 block">
+                            Estilo da Letra
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {(
+                              [
+                                { id: 'editorial', label: 'Editorial' },
+                                { id: 'modern', label: 'Moderno' },
+                                { id: 'impact', label: 'Impacto' },
+                              ] as const
+                            ).map((f) => (
+                              <button
+                                key={f.id}
+                                type="button"
+                                onClick={() => void handleLiveUpdateImageSpec({ fontStyle: f.id })}
+                                className={`px-2.5 py-1 rounded-md text-[11px] font-bold cursor-pointer ${
+                                  (activeImageAsset.designSpec.fontStyle || 'editorial') === f.id
+                                    ? 'bg-amber-400 text-neutral-950'
+                                    : 'bg-[#081711] text-emerald-100 border border-white/15 hover:border-amber-400/50'
+                                }`}
+                              >
+                                {f.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <span className="text-[11px] font-semibold text-emerald-200/80 block">
+                            Formato / Proporção
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {(['1:1', '16:9', '9:16', '4:5'] as DukeImageAspectRatio[]).map((ratio) => (
+                              <button
+                                key={ratio}
+                                type="button"
+                                onClick={() => void handleLiveUpdateImageSpec({ aspectRatio: ratio })}
+                                className={`px-2.5 py-1 rounded-md text-[11px] font-bold cursor-pointer ${
+                                  activeImageAsset.designSpec.aspectRatio === ratio
+                                    ? 'bg-emerald-600 text-white'
+                                    : 'bg-[#081711] text-emerald-100 border border-white/15 hover:border-amber-400/50'
+                                }`}
+                              >
+                                {ratio}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <span className="text-[11px] font-semibold text-emerald-200/80 block">
+                            Moldura
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {(
+                              [
+                                { id: 'gold_double', label: 'Ouro Duplo' },
+                                { id: 'minimal_white', label: 'Branco Clean' },
+                                { id: 'neon_glow', label: 'Brilho Neon' },
+                                { id: 'none', label: 'Sem Moldura' },
+                              ] as Array<{ id: DukeImageFrameStyle; label: string }>
+                            ).map((fr) => (
+                              <button
+                                key={fr.id}
+                                type="button"
+                                onClick={() => void handleLiveUpdateImageSpec({ frameStyle: fr.id })}
+                                className={`px-2.5 py-1 rounded-md text-[11px] font-bold cursor-pointer ${
+                                  activeImageAsset.designSpec.frameStyle === fr.id
+                                    ? 'bg-emerald-600 text-white'
+                                    : 'bg-[#081711] text-emerald-100 border border-white/15 hover:border-amber-400/50'
+                                }`}
+                              >
+                                {fr.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Text & Accent Color Swatches */}
+                      <div className="flex flex-wrap items-center gap-4 pt-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] font-semibold text-emerald-200/80">Cor do Texto:</span>
+                          {['#ffffff', '#fde68a', '#fbbf24', '#34d399', '#38bdf8', '#fb7185'].map((color) => (
+                            <button
+                              key={color}
+                              type="button"
+                              aria-label={`Cor do texto ${color}`}
+                              onClick={() => void handleLiveUpdateImageSpec({ textPrimary: color })}
+                              className={`w-5 h-5 rounded-full border cursor-pointer ${
+                                activeImageAsset.designSpec.textPrimary?.toLowerCase() === color
+                                  ? 'border-white scale-110 ring-2 ring-amber-400'
+                                  : 'border-white/30'
+                              }`}
+                              style={{ backgroundColor: color }}
+                            />
+                          ))}
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] font-semibold text-emerald-200/80">Destaque:</span>
+                          {['#f59e0b', '#10b981', '#3b82f6', '#e11d48', '#8b5cf6', '#f8fafc'].map((color) => (
+                            <button
+                              key={color}
+                              type="button"
+                              aria-label={`Cor de destaque ${color}`}
+                              onClick={() => void handleLiveUpdateImageSpec({ accentColor: color })}
+                              className={`w-5 h-5 rounded-full border cursor-pointer ${
+                                activeImageAsset.designSpec.accentColor?.toLowerCase() === color
+                                  ? 'border-white scale-110 ring-2 ring-amber-400'
+                                  : 'border-white/30'
+                              }`}
+                              style={{ backgroundColor: color }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Real-time Photo Enhancement Sliders */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-2 border-t border-white/10">
+                        <label className="space-y-1">
+                          <div className="flex justify-between text-[11px] text-emerald-200/80">
+                            <span>Brilho</span>
+                            <span className="font-mono text-amber-300">
+                              {Math.round((activeImageAsset.designSpec.brightness ?? 1) * 100)}%
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min={0.65}
+                            max={1.5}
+                            step={0.05}
+                            value={activeImageAsset.designSpec.brightness ?? 1}
+                            onChange={(e) =>
+                              void handleLiveUpdateImageSpec({ brightness: Number(e.target.value) })
+                            }
+                            className="w-full accent-amber-400 cursor-pointer"
+                          />
+                        </label>
+
+                        <label className="space-y-1">
+                          <div className="flex justify-between text-[11px] text-emerald-200/80">
+                            <span>Contraste</span>
+                            <span className="font-mono text-amber-300">
+                              {Math.round((activeImageAsset.designSpec.contrast ?? 1) * 100)}%
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min={0.75}
+                            max={1.6}
+                            step={0.05}
+                            value={activeImageAsset.designSpec.contrast ?? 1}
+                            onChange={(e) =>
+                              void handleLiveUpdateImageSpec({ contrast: Number(e.target.value) })
+                            }
+                            className="w-full accent-amber-400 cursor-pointer"
+                          />
+                        </label>
+
+                        <label className="space-y-1">
+                          <div className="flex justify-between text-[11px] text-emerald-200/80">
+                            <span>Saturação / Cor</span>
+                            <span className="font-mono text-amber-300">
+                              {Math.round((activeImageAsset.designSpec.saturate ?? 1) * 100)}%
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={1.9}
+                            step={0.05}
+                            value={activeImageAsset.designSpec.saturate ?? 1}
+                            onChange={(e) =>
+                              void handleLiveUpdateImageSpec({ saturate: Number(e.target.value) })
+                            }
+                            className="w-full accent-amber-400 cursor-pointer"
+                          />
+                        </label>
+
+                        <label className="space-y-1">
+                          <div className="flex justify-between text-[11px] text-emerald-200/80">
+                            <span>Vinheta / Sombra</span>
+                            <span className="font-mono text-amber-300">
+                              {Math.round((activeImageAsset.designSpec.vignette ?? 0.25) * 100)}%
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={0.9}
+                            step={0.05}
+                            value={activeImageAsset.designSpec.vignette ?? 0.25}
+                            onChange={(e) =>
+                              void handleLiveUpdateImageSpec({ vignette: Number(e.target.value) })
+                            }
+                            className="w-full accent-amber-400 cursor-pointer"
+                          />
+                        </label>
+
+                        <label className="space-y-1">
+                          <div className="flex justify-between text-[11px] text-emerald-200/80">
+                            <span>Tom Quente / Sépia</span>
+                            <span className="font-mono text-amber-300">
+                              {Math.round((activeImageAsset.designSpec.sepia ?? 0) * 100)}%
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={0.65}
+                            step={0.05}
+                            value={activeImageAsset.designSpec.sepia ?? 0}
+                            onChange={(e) =>
+                              void handleLiveUpdateImageSpec({ sepia: Number(e.target.value) })
+                            }
+                            className="w-full accent-amber-400 cursor-pointer"
+                          />
+                        </label>
+
+                        <label className="space-y-1">
+                          <div className="flex justify-between text-[11px] text-emerald-200/80">
+                            <span>Tamanho da Letra</span>
+                            <span className="font-mono text-amber-300">
+                              {Math.round((activeImageAsset.designSpec.fontScale ?? 1) * 100)}%
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min={0.75}
+                            max={1.4}
+                            step={0.05}
+                            value={activeImageAsset.designSpec.fontScale ?? 1}
+                            onChange={(e) =>
+                              void handleLiveUpdateImageSpec({
+                                fontScale: Number(e.target.value),
+                              })
+                            }
+                            className="w-full accent-amber-400 cursor-pointer"
+                          />
+                        </label>
+                      </div>
                     </div>
 
                     {/* 1-Click Instant Reformulation Styles */}

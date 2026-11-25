@@ -18,6 +18,14 @@ async function startServer() {
     res.json({ ok: true, service: 'conae-duque-evento' });
   });
 
+  app.get('/api/duke-evento/chat', (_req, res) => {
+    res.status(200).json({
+      ok: true,
+      service: 'conae-duque-evento',
+      modes: ['auto', 'chat', 'image', 'event'],
+    });
+  });
+
   app.post('/api/duke-evento/chat', async (req, res) => {
     try {
       const body = (req.body || {}) as DukeChatRequestBody;

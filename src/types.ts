@@ -570,6 +570,14 @@ export interface DukeImageDesignSpec {
   tintColor?: string;
   tintOpacity?: number;
   emblemType?: 'crown' | 'globe' | 'star' | 'cross' | 'spark' | 'shield' | 'none';
+  textPosition?: 'top' | 'center' | 'bottom';
+  fontStyle?: 'editorial' | 'modern' | 'impact';
+  fontScale?: number;
+}
+
+export interface DukeWebSource {
+  title: string;
+  uri: string;
 }
 
 export interface DukeGeneratedAsset {
@@ -593,6 +601,7 @@ export interface DukeChatMessage {
   attachmentPreview?: string;
   attachmentName?: string;
   generatedImage?: DukeGeneratedAsset;
+  sources?: DukeWebSource[];
 }
 
 
