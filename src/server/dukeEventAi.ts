@@ -300,7 +300,38 @@ Regras obrigatórias:
 5. Defina "shouldPublish": true quando o cliente pedir para publicar, finalizar, salvar ou gerar o link oficial (por exemplo: "publica", "gera o link", "pode gerar o link", "finaliza", "me dá o link"). Caso contrário, mantenha "shouldPublish": false e informe de forma simpática que quando estiver do jeito desejado basta pedir "gera o link" ou clicar em Publicar & Gerar Link.
 6. Nunca use HTML ou Markdown quebrado nos campos do objeto "event". Escreva em português claro, elegante e pronto para divulgação.`;
 
-const DUKE_MODELS = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'] as const;
+const VERCEL_AI_GATEWAY_URL = 'https://ai-gateway.vercel.sh/v1/chat/completions';
+const GATEWAY_MODELS = ['google/gemini-2.5-flash', 'google/gemini-2.5-flash-lite'] as const;
+
+const GATEWAY_JSON_CONTRACT = `
+Responda EXCLUSIVAMENTE com um objeto JSON válido (sem texto antes ou depois, sem blocos markdown) contendo exatamente as chaves:
+{
+  "reply": "string",
+  "shouldPublish": false,
+  "event": {
+    "slug": "string-com-hifens",
+    "title": "string",
+    "subtitle": "string",
+    "category": "string",
+    "tagline": "string",
+    "dateLabel": "string",
+    "timeLabel": "string",
+    "venueName": "string",
+    "city": "string",
+    "state": "UF",
+    "theme": "emerald_gold | royal_blue | crimson_gold | midnight_violet | ivory_gold",
+    "organizerName": "string",
+    "whatsappPhone": "string",
+    "registrationCta": "string",
+    "heroSummary": "string",
+    "highlights": ["string"],
+    "metrics": [{"label": "string", "value": "string"}],
+    "panels": [{"title": "string", "subtitle": "string", "description": "string", "badge": "string"}],
+    "schedule": [{"time": "string", "title": "string", "speaker": "string", "stage": "string", "description": "string"}],
+    "speakers": [{"name": "string", "role": "string", "topic": "string"}],
+    "tickets": [{"name": "string", "priceLabel": "string", "perks": "string", "highlighted": false}]
+  }
+}`;
 
 function isTransientAiError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err ?? '');
@@ -323,16 +354,112 @@ function formatFriendlyAiError(err: unknown): string {
     return 'Limite temporário de requisições da IA atingido. Aguarde alguns instantes e tente enviar novamente.';
   }
   if (raw.includes('API_KEY_INVALID') || raw.includes('401') || raw.includes('403')) {
-    return 'Chave GEMINI_API_KEY inválida ou sem permissão no servidor.';
+    return 'Chave de API inválida ou sem permissão no servidor (verifique GEMINI_API_KEY ou AI_GATEWAY_API_KEY na Vercel).';
   }
   return raw.length > 260 ? 'Não foi possível concluir a resposta da IA agora. Tente enviar seu pedido novamente.' : raw;
 }
 
+function stripJsonFences(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('```')) {
+    return trimmed
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+  }
+  return trimmed;
+}
+
+async function runViaVercelAiGateway(params: {
+  token: string;
+  promptText: string;
+  attachment: DukeChatAttachment | null;
+}): Promise<string> {
+  const { token, promptText, attachment } = params;
+  const userContent =
+    attachment?.base64Data && attachment.mimeType?.startsWith('image/')
+      ? [
+          { type: 'text', text: promptText },
+          {
+            type: 'image_url',
+            image_url: { url: `data:${attachment.mimeType};base64,${attachment.base64Data}` },
+          },
+        ]
+      : promptText;
+
+  let lastError: unknown = null;
+
+  for (let i = 0; i < GATEWAY_MODELS.length; i += 1) {
+    const model = GATEWAY_MODELS[i];
+    try {
+      const response = await fetch(VERCEL_AI_GATEWAY_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: `${SYSTEM_INSTRUCTION}\n${GATEWAY_JSON_CONTRACT}` },
+            { role: 'user', content: userContent },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.7,
+        }),
+      });
+
+      if (!response.ok) {
+        const errBody = await response.text().catch(() => '');
+        throw new Error(`Vercel AI Gateway HTTP ${response.status}: ${errBody.slice(0, 200)}`);
+      }
+
+      const data = (await response.json()) as {
+        choices?: Array<{ message?: { content?: string | Array<{ type?: string; text?: string }> } }>;
+      };
+      const content = data?.choices?.[0]?.message?.content;
+      const text =
+        typeof content === 'string'
+          ? content
+          : Array.isArray(content)
+            ? content
+                .map((part) => (typeof part?.text === 'string' ? part.text : ''))
+                .join('\n')
+            : '';
+
+      if (text.trim()) {
+        return stripJsonFences(text);
+      }
+      throw new Error('Resposta vazia recebida do Vercel AI Gateway.');
+    } catch (err) {
+      lastError = err;
+      if (!isTransientAiError(err) && i === GATEWAY_MODELS.length - 1) {
+        break;
+      }
+      if (i < GATEWAY_MODELS.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+      }
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error('Não foi possível conectar ao Vercel AI Gateway.');
+}
+
 export async function runDukeEventChat(body: DukeChatRequestBody): Promise<DukeChatResult> {
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey) {
+  const rawGeminiKey = process.env.GEMINI_API_KEY?.trim() || '';
+  const geminiIsGatewayKey = rawGeminiKey.startsWith('vck_');
+  const geminiKey = geminiIsGatewayKey ? '' : rawGeminiKey;
+  const gatewayToken =
+    process.env.AI_GATEWAY_API_KEY?.trim() ||
+    (geminiIsGatewayKey ? rawGeminiKey : '') ||
+    process.env.VERCEL_OIDC_TOKEN?.trim() ||
+    '';
+
+  if (!geminiKey && !gatewayToken) {
     const err = new Error(
-      'Chave GEMINI_API_KEY não configurada no servidor.'
+      'Nenhuma chave de IA configurada no servidor (configure GEMINI_API_KEY ou AI_GATEWAY_API_KEY nas Environment Variables da Vercel).'
     );
     (err as Error & { statusCode?: number }).statusCode = 503;
     throw err;
@@ -345,11 +472,6 @@ export async function runDukeEventChat(body: DukeChatRequestBody): Promise<DukeC
     (err as Error & { statusCode?: number }).statusCode = 400;
     throw err;
   }
-
-  const ai = new GoogleGenAI({
-    apiKey,
-    httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
-  });
 
   const safeHistory = Array.isArray(body.history) ? body.history.slice(-10) : [];
   const historyBlock = safeHistory
@@ -385,52 +507,71 @@ export async function runDukeEventChat(body: DukeChatRequestBody): Promise<DukeC
     .filter(Boolean)
     .join('\n');
 
-  const contentsParts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
-    { text: promptText },
-  ];
-
-  if (
-    attachment?.base64Data &&
-    attachment.mimeType &&
-    (attachment.mimeType.startsWith('image/') || attachment.mimeType === 'application/pdf')
-  ) {
-    contentsParts.push({
-      inlineData: {
-        mimeType: attachment.mimeType,
-        data: attachment.base64Data,
-      },
-    });
-  }
-
   let text: string | undefined;
   let lastError: unknown = null;
 
-  const modelAttempts = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite', 'gemini-4-hydrogen'] as const;
+  if (geminiKey) {
+    const ai = new GoogleGenAI({
+      apiKey: geminiKey,
+      httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
+    });
 
-  for (let i = 0; i < modelAttempts.length; i += 1) {
-    const modelName = modelAttempts[i];
-    try {
-      const response = await ai.models.generateContent({
-        model: modelName,
-        contents: contentsParts,
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          responseMimeType: 'application/json',
-          responseSchema: DUKE_EVENT_RESPONSE_SCHEMA,
+    const contentsParts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
+      { text: promptText },
+    ];
+
+    if (
+      attachment?.base64Data &&
+      attachment.mimeType &&
+      (attachment.mimeType.startsWith('image/') || attachment.mimeType === 'application/pdf')
+    ) {
+      contentsParts.push({
+        inlineData: {
+          mimeType: attachment.mimeType,
+          data: attachment.base64Data,
         },
       });
-      if (response.text) {
-        text = response.text;
-        break;
+    }
+
+    const modelAttempts = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite', 'gemini-4-hydrogen'] as const;
+
+    for (let i = 0; i < modelAttempts.length; i += 1) {
+      const modelName = modelAttempts[i];
+      try {
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents: contentsParts,
+          config: {
+            systemInstruction: SYSTEM_INSTRUCTION,
+            responseMimeType: 'application/json',
+            responseSchema: DUKE_EVENT_RESPONSE_SCHEMA,
+          },
+        });
+        if (response.text) {
+          text = stripJsonFences(response.text);
+          break;
+        }
+      } catch (err) {
+        lastError = err;
+        if (!isTransientAiError(err)) {
+          break;
+        }
+        if (i < modelAttempts.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 650));
+        }
       }
+    }
+  }
+
+  if (!text && gatewayToken) {
+    try {
+      text = await runViaVercelAiGateway({
+        token: gatewayToken,
+        promptText,
+        attachment,
+      });
     } catch (err) {
       lastError = err;
-      if (!isTransientAiError(err)) {
-        break;
-      }
-      if (i < modelAttempts.length - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 650));
-      }
     }
   }
 
