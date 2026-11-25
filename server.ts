@@ -3,7 +3,7 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { runDukeEventChat, type DukeChatRequestBody } from './src/server/dukeEventAi.ts';
+import { runDukeEventChat, type DukeChatRequestBody } from './api/duke-evento/chat.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
