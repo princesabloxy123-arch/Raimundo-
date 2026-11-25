@@ -16,26 +16,31 @@ import {
   ArrowUp,
   Check,
   CheckCircle2,
+  Code2,
   Copy,
   Download,
   ExternalLink,
   FileText,
   FolderKanban,
   Globe,
+  Image as ImageIcon,
   ImagePlus,
   Link2,
   Loader2,
   LogIn,
   MessageCircle,
+  MessageSquareText,
   Mic,
   MicOff,
   Palette,
   Paperclip,
   QrCode,
+  RefreshCw,
   Rocket,
   Sparkles,
   Trash2,
   User as UserIcon,
+  Wand2,
   X,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -45,8 +50,13 @@ import type {
   DukeEventRecord,
   DukeEventSpec,
   DukeEventTheme,
+  DukeGeneratedAsset,
+  DukeImageDesignSpec,
+  DukeStudioMode,
   UserProfile,
 } from '../types';
+import { compressDataUrlForFirestoreBanner, renderDukeImageStudio } from '../utils/dukeImageStudio';
+import { DukeRichMessage } from './DukeRichMessage';
 import { buildStandaloneEventHtml, PublicEventPage } from './PublicEventPage';
 
 interface DuqueEventoStudioProps {
@@ -61,27 +71,45 @@ interface DuqueEventoStudioProps {
 const CONAE_DUQUE_ROBOT_3D = '/src/assets/images/conae_duque_robot_3d_1795637461401.jpg';
 const CONAE_AI_BRAIN_3D = '/src/assets/images/conae_ai_brain_3d_1795638395875.jpg';
 
-const STARTER_PROMPTS = [
+const STARTER_PROMPTS: Array<{ label: string; mode: DukeStudioMode; prompt: string }> = [
   {
-    label: 'Congresso Ministerial CONAE',
+    label: 'Criar Arte / Cartaz HD',
+    mode: 'image',
     prompt:
-      'Monte um Congresso Ministerial Nacional com 3 dias de programação, 4 painéis principais (Liderança, Missões, Gestão Eclesiástica e Credenciamento), preletores confirmados, ingressos Gratuito e VIP, em Goiânia-GO.',
+      'Crie um cartaz oficial elegante em verde esmeralda e dourado para o Grande Congresso CONAE 2026 em Goiânia, formato quadrado 1:1, com selo VIP e chamada para inscrição.',
   },
   {
-    label: 'Convenção Empresarial & Gala',
+    label: 'Texto & Legenda estilo ChatGPT',
+    mode: 'chat',
     prompt:
-      'Crie um evento empresarial de alto padrão "Fórum de Negócios & Investidores 2026" com painéis de mercado, rodadas de negócios, jantar de gala, tema azul royal, em São Paulo-SP.',
+      'Escreva um texto impactante de divulgação para WhatsApp e Instagram convidando pastores, líderes e empresários para o nosso próximo encontro oficial da CONAE.',
   },
   {
-    label: 'Workshop & Treinamento Intensivo',
+    label: 'Gerar Código Pronto (HTML / Site)',
+    mode: 'chat',
     prompt:
-      'Projete um Workshop Intensivo de 1 dia com certificação oficial, cronograma das 08h30 às 18h, 4 módulos práticos, ingressos Lote 1 e VIP Mentoria, com botão de inscrição pelo WhatsApp.',
+      'Gere um código HTML + CSS completo de um cartão de convite digital elegante em verde escuro e dourado com botão de confirmação no WhatsApp.',
   },
   {
-    label: 'Conferência Jovem & Festival',
+    label: 'Montar Evento & Gerar Link Fixo',
+    mode: 'event',
     prompt:
-      'Crie uma Conferência de Avivamento e Música com tema roxo noturno, painéis de louvor e liderança jovem, programação noturna e inscrição gratuita com credenciamento rápido.',
+      'Monte um Congresso Ministerial Nacional com 3 dias de programação, 4 painéis principais, preletores confirmados e ingressos Gratuito e VIP em Goiânia-GO.',
   },
+];
+
+const MODE_OPTIONS: Array<{ id: DukeStudioMode; label: string }> = [
+  { id: 'auto', label: 'Automático' },
+  { id: 'chat', label: 'Texto & Código' },
+  { id: 'image', label: 'Imagem / Reformular' },
+  { id: 'event', label: 'Evento & Link' },
+];
+
+const IMAGE_QUICK_REFORMULATIONS = [
+  { label: 'Ouro CONAE', prompt: 'Reformule esta imagem no estilo oficial CONAE verde esmeralda e dourado com moldura dupla dourada e contraste cinematográfico.' },
+  { label: 'Stories 9:16', prompt: 'Reformule esta imagem para o formato vertical Stories 9:16 com iluminação profissional e acabamento limpo.' },
+  { label: 'Capa 16:9', prompt: 'Reformule esta imagem para capa horizontal 16:9 em alta definição com vinheta suave e cores vibrantes.' },
+  { label: 'Só Foto (Sem Texto)', prompt: 'Reformule apenas a fotografia melhorando brilho, nitidez, contraste cinematográfico e cores vivas, sem colocar nenhum texto sobre a imagem.' },
 ];
 
 const THEME_OPTIONS: { id: DukeEventTheme; label: string; dot: string }[] = [
@@ -183,10 +211,11 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
       role: 'assistant',
       createdAt: new Date().toISOString(),
       content:
-        'Olá! Estou pronto para servir nossos clientes da CONAE. Pode pedir qualquer evento, painéis, programação, preletores, ingressos ou página de divulgação — eu construo tudo ao vivo aqui ao lado e gero o link oficial pra você!',
+        'Olá! Sou o Robô Duque da CONAE — seu estúdio completo de Inteligência Artificial no estilo ChatGPT. Posso criar **textos**, gerar **códigos prontos**, **criar artes e reformular suas fotos** em alta definição, e montar **eventos completos com link fixo**. Como posso te ajudar agora?',
     },
   ]);
 
+  const [studioMode, setStudioMode] = useState<DukeStudioMode>('auto');
   const [inputValue, setInputValue] = useState('');
   const [sending, setSending] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
@@ -198,8 +227,14 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
   const [publishedRecord, setPublishedRecord] = useState<{ slug: string; url: string } | null>(null);
   const [pendingPublishAfterLogin, setPendingPublishAfterLogin] = useState(false);
 
+  const [generatedImages, setGeneratedImages] = useState<DukeGeneratedAsset[]>([]);
+  const [activeImageId, setActiveImageId] = useState<string | null>(null);
+  const [showOriginalCompare, setShowOriginalCompare] = useState(false);
+  const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
+  const [appliedBannerId, setAppliedBannerId] = useState<string | null>(null);
+
   const [myEvents, setMyEvents] = useState<DukeEventRecord[]>([]);
-  const [rightTab, setRightTab] = useState<'preview' | 'publish' | 'saved'>('preview');
+  const [rightTab, setRightTab] = useState<'preview' | 'image' | 'publish' | 'saved'>('preview');
   const [mobilePane, setMobilePane] = useState<'chat' | 'workspace'>('chat');
   const [copiedLink, setCopiedLink] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
@@ -208,6 +243,11 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
   const [uploadingFile, setUploadingFile] = useState(false);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
+
+  const activeImageAsset = useMemo(
+    () => generatedImages.find((img) => img.id === activeImageId) || generatedImages[0] || null,
+    [generatedImages, activeImageId]
+  );
 
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
@@ -482,9 +522,25 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
     }
   };
 
-  const handleSendMessage = async (overrideText?: string) => {
+  const handleSendMessage = async (
+    overrideText?: string,
+    overrideMode?: DukeStudioMode,
+    overrideSourceImage?: { name: string; dataUrl: string }
+  ) => {
     const text = (overrideText ?? inputValue).trim();
-    const activeAttachment = overrideText ? null : stagedAttachment;
+    const effectiveMode = overrideMode ?? studioMode;
+    const activeAttachment: StagedAttachment | null = overrideSourceImage
+      ? {
+          name: overrideSourceImage.name,
+          mimeType: 'image/jpeg',
+          base64Data: overrideSourceImage.dataUrl.split(',')[1] || '',
+          dataUrl: overrideSourceImage.dataUrl,
+          isImage: true,
+        }
+      : overrideText
+        ? stagedAttachment
+        : stagedAttachment;
+
     if ((!text && !activeAttachment) || sending) return;
 
     if (isRecordingVoice) {
@@ -499,14 +555,14 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
     setApiError(null);
     setPublishError(null);
     setVoiceNotice(null);
-    setInputValue('');
+    if (!overrideText) setInputValue('');
     setStagedAttachment(null);
 
     const displayContent =
       text ||
       (activeAttachment?.isImage
-        ? `Enviei a imagem "${activeAttachment.name}" para usar no projeto.`
-        : `Enviei o arquivo "${activeAttachment?.name}" para construir o projeto.`);
+        ? `Enviei a imagem "${activeAttachment.name}" para reformular com IA.`
+        : `Enviei o arquivo "${activeAttachment?.name}" para análise da IA.`);
 
     const userMsg: DukeChatMessage = {
       id: `usr_${Date.now()}`,
@@ -527,6 +583,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
+          mode: effectiveMode,
           history: nextHistory.slice(-10).map((m) => ({ role: m.role, content: m.content })),
           currentEvent,
           attachment: activeAttachment
@@ -541,13 +598,22 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
       });
 
       const rawText = await response.text();
-      let payload: { error?: string; reply?: string; shouldPublish?: boolean; event?: DukeEventSpec };
+      let payload: {
+        error?: string;
+        modeUsed?: 'chat' | 'image' | 'event';
+        reply?: string;
+        shouldPublish?: boolean;
+        event?: DukeEventSpec;
+        imageDesign?: DukeImageDesignSpec;
+      };
       try {
         payload = JSON.parse(rawText) as {
           error?: string;
+          modeUsed?: 'chat' | 'image' | 'event';
           reply?: string;
           shouldPublish?: boolean;
           event?: DukeEventSpec;
+          imageDesign?: DukeImageDesignSpec;
         };
       } catch {
         throw new Error(
@@ -557,40 +623,68 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
         );
       }
 
-      if (!response.ok || !payload.event) {
+      if (!response.ok || (!payload.reply && !payload.event && !payload.imageDesign)) {
         throw new Error(
           payload.error || `Não foi possível processar seu pedido (HTTP ${response.status}).`
         );
       }
 
-      const updatedEvent: DukeEventSpec = {
-        ...payload.event,
-        bannerImageUrl:
-          activeAttachment?.isImage && activeAttachment.dataUrl
-            ? activeAttachment.dataUrl
-            : payload.event.bannerImageUrl || currentEvent?.bannerImageUrl,
-      };
-      setCurrentEvent(updatedEvent);
-      setCustomSlug((prev) => prev || updatedEvent.slug);
-
+      const modeUsed = payload.modeUsed || (payload.imageDesign ? 'image' : payload.event ? 'event' : 'chat');
       let publishedUrl: string | undefined;
-      if (payload.shouldPublish) {
-        const result = await persistEventToFirestore(updatedEvent, customSlug || updatedEvent.slug);
-        if (result) {
-          publishedUrl = result.url;
+      let generatedImage: DukeGeneratedAsset | undefined;
+
+      if (modeUsed === 'image' && payload.imageDesign) {
+        const renderedPng = await renderDukeImageStudio(
+          payload.imageDesign,
+          activeAttachment?.isImage ? activeAttachment.dataUrl : undefined
+        );
+        generatedImage = {
+          id: `img_${Date.now()}`,
+          title: payload.imageDesign.title || 'Arte Robô Duque',
+          mode: payload.imageDesign.mode,
+          aspectRatio: payload.imageDesign.aspectRatio,
+          resultDataUrl: renderedPng,
+          originalDataUrl: activeAttachment?.isImage ? activeAttachment.dataUrl : undefined,
+          designSpec: payload.imageDesign,
+          createdAt: new Date().toISOString(),
+        };
+        setGeneratedImages((prev) => [generatedImage!, ...prev].slice(0, 12));
+        setActiveImageId(generatedImage.id);
+        setShowOriginalCompare(false);
+        setRightTab('image');
+      } else if (modeUsed === 'event' && payload.event) {
+        const updatedEvent: DukeEventSpec = {
+          ...payload.event,
+          bannerImageUrl:
+            activeAttachment?.isImage && activeAttachment.dataUrl
+              ? activeAttachment.dataUrl
+              : payload.event.bannerImageUrl || currentEvent?.bannerImageUrl,
+        };
+        setCurrentEvent(updatedEvent);
+        setCustomSlug((prev) => prev || updatedEvent.slug);
+
+        if (payload.shouldPublish) {
+          const result = await persistEventToFirestore(updatedEvent, customSlug || updatedEvent.slug);
+          if (result) {
+            publishedUrl = result.url;
+          }
+        } else {
+          setRightTab('preview');
         }
-      } else {
-        setRightTab('preview');
       }
 
       const aiMsg: DukeChatMessage = {
         id: `bot_${Date.now()}`,
         role: 'assistant',
+        modeUsed,
         content:
           payload.reply ||
-          `Pronto! Construí "${updatedEvent.title}" com os painéis e programação solicitados!`,
+          (modeUsed === 'image'
+            ? 'Pronto! Criei sua imagem em alta definição.'
+            : 'Pronto! Veja o resultado abaixo.'),
         createdAt: new Date().toISOString(),
         publishedUrl,
+        generatedImage,
       };
       setMessages((prev) => [...prev, aiMsg]);
     } catch (err) {
@@ -601,6 +695,105 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
       setApiError(msg);
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleDownloadGeneratedImage = (asset: DukeGeneratedAsset) => {
+    const a = document.createElement('a');
+    a.href = asset.resultDataUrl;
+    a.download = `${sanitizeSlug(asset.title)}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
+  const handleApplyImageToEventBanner = async (asset: DukeGeneratedAsset) => {
+    const compressed = await compressDataUrlForFirestoreBanner(asset.resultDataUrl);
+    if (currentEvent) {
+      setCurrentEvent({ ...currentEvent, bannerImageUrl: compressed });
+    } else {
+      setCurrentEvent({
+        slug: sanitizeSlug(asset.title),
+        title: asset.designSpec.headline || asset.title,
+        subtitle: asset.designSpec.subheadline || 'Divulgação oficial projetada pelo Robô Duque.',
+        category: 'Evento Oficial',
+        tagline: asset.designSpec.badgeText || 'CONAE Oficial',
+        dateLabel: 'Data a definir',
+        timeLabel: '19h às 22h',
+        venueName: 'Centro de Convenções',
+        city: 'Goiânia',
+        state: 'GO',
+        theme: 'emerald_gold',
+        organizerName: 'CONAE',
+        whatsappPhone: '',
+        registrationCta: asset.designSpec.ctaText || 'Garantir Minha Vaga',
+        heroSummary: 'Evento com arte visual criada e personalizada no Estúdio de Imagem do Robô Duque.',
+        highlights: ['Credenciamento online rápido', 'Programação completa ao vivo'],
+        metrics: [
+          { label: 'Formato', value: 'Presencial & Online' },
+          { label: 'Acesso', value: 'Confirmado' },
+        ],
+        panels: [
+          {
+            title: 'Abertura Oficial',
+            subtitle: 'Boas-vindas e visão geral',
+            description: 'Peça no chat para o Robô Duque detalhar todos os painéis e horários.',
+            badge: 'Painel 01',
+          },
+        ],
+        schedule: [
+          {
+            time: '19:00',
+            title: 'Recepção e Abertura',
+            speaker: 'Equipe Organizadora',
+            stage: 'Auditório Principal',
+            description: 'Início das atividades oficiais do evento.',
+          },
+        ],
+        speakers: [
+          {
+            name: 'Convidado Especial',
+            role: 'Preletor',
+            topic: 'Palavra Principal',
+          },
+        ],
+        tickets: [
+          {
+            name: 'Ingresso Padrão',
+            priceLabel: 'Gratuito',
+            perks: 'Acesso completo à programação oficial.',
+            highlighted: true,
+          },
+        ],
+        bannerImageUrl: compressed,
+      });
+    }
+    setAppliedBannerId(asset.id);
+    setRightTab('preview');
+    window.setTimeout(() => setAppliedBannerId(null), 2600);
+  };
+
+  const handleStageGeneratedImageForEdit = async (asset: DukeGeneratedAsset) => {
+    const sourceUrl = asset.originalDataUrl || asset.resultDataUrl;
+    const compressed = await compressDataUrlForFirestoreBanner(sourceUrl);
+    setStagedAttachment({
+      name: `${sanitizeSlug(asset.title)}.jpg`,
+      mimeType: 'image/jpeg',
+      base64Data: compressed.split(',')[1] || '',
+      dataUrl: compressed,
+      isImage: true,
+    });
+    setStudioMode('image');
+    setMobilePane('chat');
+  };
+
+  const handleCopyMessageText = async (msgId: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedMsgId(msgId);
+      window.setTimeout(() => setCopiedMsgId(null), 2000);
+    } catch {
+      // ignore
     }
   };
 
@@ -897,7 +1090,71 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                     </div>
                   )}
 
-                  <p className="whitespace-pre-line">{msg.content}</p>
+                  {msg.role === 'assistant' ? (
+                    <DukeRichMessage content={msg.content} />
+                  ) : (
+                    <p className="whitespace-pre-line">{msg.content}</p>
+                  )}
+
+                  {msg.generatedImage && (
+                    <div className="rounded-xl overflow-hidden border border-amber-400/45 bg-black/55 space-y-2 p-2">
+                      <div className="rounded-lg overflow-hidden bg-black/60">
+                        <img
+                          src={msg.generatedImage.resultDataUrl}
+                          alt={msg.generatedImage.title}
+                          referrerPolicy="no-referrer"
+                          className="w-full max-h-64 object-contain block mx-auto"
+                        />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 px-0.5">
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadGeneratedImage(msg.generatedImage!)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-[11px] cursor-pointer"
+                        >
+                          <Download className="w-3 h-3" />
+                          <span>Baixar PNG</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveImageId(msg.generatedImage!.id);
+                            setRightTab('image');
+                            setMobilePane('workspace');
+                          }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-700/80 hover:bg-emerald-600 text-white font-semibold text-[11px] cursor-pointer"
+                        >
+                          <Wand2 className="w-3 h-3" />
+                          <span>Abrir Estúdio</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleApplyImageToEventBanner(msg.generatedImage!)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-black/60 hover:bg-black/80 border border-amber-400/35 text-amber-200 font-semibold text-[11px] cursor-pointer"
+                        >
+                          <ImageIcon className="w-3 h-3" />
+                          <span>Capa do Evento</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {msg.role === 'assistant' && msg.id !== 'welcome_duke' && (
+                    <div className="flex items-center justify-end pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => void handleCopyMessageText(msg.id, msg.content)}
+                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-200/70 hover:text-amber-300 cursor-pointer"
+                      >
+                        {copiedMsgId === msg.id ? (
+                          <Check className="w-3 h-3 text-emerald-300" />
+                        ) : (
+                          <Copy className="w-3 h-3" />
+                        )}
+                        <span>{copiedMsgId === msg.id ? 'Copiado' : 'Copiar texto'}</span>
+                      </button>
+                    </div>
+                  )}
 
                   {msg.publishedUrl && (
                     <div className="rounded-xl bg-black/50 border border-amber-400/40 p-2.5 space-y-2">
@@ -933,18 +1190,21 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
               </div>
             ))}
 
-            {/* Quick Starter Prompts when no event built yet */}
+            {/* Quick Starter Prompts covering ChatGPT Text, Code, Image Studio & Event Builder */}
             {messages.length <= 1 && !sending && (
               <div className="pt-2 space-y-2">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-300/80">
-                  Comece com 1 clique ou peça abaixo
+                  Comece com 1 clique ou envie foto/pedido abaixo
                 </p>
                 <div className="grid grid-cols-1 gap-2">
                   {STARTER_PROMPTS.map((item) => (
                     <button
                       key={item.label}
                       type="button"
-                      onClick={() => void handleSendMessage(item.prompt)}
+                      onClick={() => {
+                        setStudioMode(item.mode);
+                        void handleSendMessage(item.prompt, item.mode);
+                      }}
                       className="text-left rounded-xl bg-[#081711] hover:bg-[#0d241b] border border-amber-400/25 hover:border-amber-400/55 px-3.5 py-2.5 transition-colors cursor-pointer space-y-0.5"
                     >
                       <span className="block text-xs font-bold text-amber-200">{item.label}</span>
@@ -994,13 +1254,31 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
             <div ref={chatEndRef} />
           </div>
 
+          {/* Mode Switcher Bar: Automático, Texto & Código, Imagem / Reformular, Evento & Link */}
+          <div className="px-3 pt-2.5 pb-1.5 border-t border-amber-400/20 bg-[#040b08] flex items-center gap-1.5 overflow-x-auto conae-scroll">
+            {MODE_OPTIONS.map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setStudioMode(opt.id)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap cursor-pointer transition-colors ${
+                  studioMode === opt.id
+                    ? 'bg-amber-400 text-neutral-950'
+                    : 'bg-[#081711] text-emerald-100/80 hover:text-white border border-amber-400/20'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
           {/* Chat Composer with Photo Upload, File Upload, Live Voice Microphone & Clean Empty Input Box */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
               void handleSendMessage();
             }}
-            className="p-3 border-t border-amber-400/20 bg-[#040b08]"
+            className="px-3 pb-3 pt-1 bg-[#040b08]"
           >
             {/* Hidden file inputs */}
             <input
@@ -1155,7 +1433,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
         >
           {/* Workspace Sub-toolbar */}
           <div className="shrink-0 px-4 py-2.5 border-b border-amber-400/20 bg-[#06130d]/85 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <button
                 type="button"
                 onClick={() => setRightTab('preview')}
@@ -1165,7 +1443,19 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                     : 'bg-black/45 text-emerald-100 hover:bg-black/70 border border-amber-400/20'
                 }`}
               >
-                Prévia Ao Vivo
+                Prévia Evento
+              </button>
+              <button
+                type="button"
+                onClick={() => setRightTab('image')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${
+                  rightTab === 'image'
+                    ? 'bg-amber-400 text-neutral-950'
+                    : 'bg-black/45 text-emerald-100 hover:bg-black/70 border border-amber-400/20'
+                }`}
+              >
+                <Wand2 className="w-3.5 h-3.5" />
+                <span>Estúdio Imagem ({generatedImages.length})</span>
               </button>
               <button
                 type="button"
@@ -1275,21 +1565,27 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                       </p>
                       <div className="grid grid-cols-3 gap-2.5 pt-2 text-left text-xs">
                         <div className="rounded-xl bg-black/40 border border-amber-400/20 p-3 space-y-1">
-                          <span className="font-bold text-amber-300 block">1. Converse</span>
-                          <span className="text-emerald-200/75">
-                            Diga o tema, data, cidade e painéis desejados.
+                          <span className="font-bold text-amber-300 flex items-center gap-1">
+                            <MessageSquareText className="w-3.5 h-3.5" /> Texto & Código
+                          </span>
+                          <span className="text-emerald-200/75 block">
+                            Peça textos, legendas, roteiros ou códigos HTML/React prontos.
                           </span>
                         </div>
                         <div className="rounded-xl bg-black/40 border border-amber-400/20 p-3 space-y-1">
-                          <span className="font-bold text-amber-300 block">2. Ajuste</span>
-                          <span className="text-emerald-200/75">
-                            Peça mudanças nas cores, horários ou ingressos.
+                          <span className="font-bold text-amber-300 flex items-center gap-1">
+                            <Wand2 className="w-3.5 h-3.5" /> Criar & Reformular
+                          </span>
+                          <span className="text-emerald-200/75 block">
+                            Crie artes HD ou envie uma foto para reformular na hora.
                           </span>
                         </div>
                         <div className="rounded-xl bg-black/40 border border-amber-400/20 p-3 space-y-1">
-                          <span className="font-bold text-amber-300 block">3. Gere o Link</span>
-                          <span className="text-emerald-200/75">
-                            Salve no Firebase e entregue o link fixo na hora.
+                          <span className="font-bold text-amber-300 flex items-center gap-1">
+                            <Code2 className="w-3.5 h-3.5" /> Evento & Link
+                          </span>
+                          <span className="text-emerald-200/75 block">
+                            Monte painéis, programação e gere o link fixo oficial.
                           </span>
                         </div>
                       </div>
@@ -1297,6 +1593,174 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                   </div>
                 )}
               </>
+            )}
+
+            {rightTab === 'image' && (
+              <div className="max-w-4xl mx-auto space-y-5">
+                {activeImageAsset ? (
+                  <div className="rounded-2xl bg-[#07150f] border border-amber-400/35 p-4 sm:p-6 space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-amber-300">
+                          {activeImageAsset.mode === 'reformulate'
+                            ? 'Foto Reformulada pela IA'
+                            : 'Arte Criada pela IA'} · {activeImageAsset.aspectRatio}
+                        </p>
+                        <h2 className="font-display text-lg sm:text-xl font-bold text-white">
+                          {activeImageAsset.title}
+                        </h2>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        {activeImageAsset.originalDataUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setShowOriginalCompare((prev) => !prev)}
+                            className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-bold cursor-pointer whitespace-nowrap ${
+                              showOriginalCompare
+                                ? 'bg-emerald-700 border-emerald-400 text-white'
+                                : 'bg-black/50 border-amber-400/35 text-amber-200 hover:bg-black/75'
+                            }`}
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            <span>{showOriginalCompare ? 'Vendo Original (Antes)' : 'Ver Antes / Depois'}</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadGeneratedImage(activeImageAsset)}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-xs cursor-pointer whitespace-nowrap"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Baixar PNG HD</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleApplyImageToEventBanner(activeImageAsset)}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-semibold text-xs cursor-pointer whitespace-nowrap"
+                        >
+                          {appliedBannerId === activeImageAsset.id ? (
+                            <Check className="w-3.5 h-3.5" />
+                          ) : (
+                            <ImageIcon className="w-3.5 h-3.5" />
+                          )}
+                          <span>
+                            {appliedBannerId === activeImageAsset.id ? 'Aplicada na Capa!' : 'Usar na Capa do Evento'}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleStageGeneratedImageForEdit(activeImageAsset)}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-black/50 hover:bg-black/75 border border-amber-400/30 text-emerald-100 font-semibold text-xs cursor-pointer whitespace-nowrap"
+                        >
+                          <Wand2 className="w-3.5 h-3.5 text-amber-300" />
+                          <span>Reformular no Chat</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl overflow-hidden bg-black/65 border border-amber-400/25 p-3 flex items-center justify-center">
+                      <img
+                        src={
+                          showOriginalCompare && activeImageAsset.originalDataUrl
+                            ? activeImageAsset.originalDataUrl
+                            : activeImageAsset.resultDataUrl
+                        }
+                        alt={activeImageAsset.title}
+                        referrerPolicy="no-referrer"
+                        className="max-h-[480px] w-auto object-contain rounded-lg shadow-2xl"
+                      />
+                    </div>
+
+                    {/* 1-Click Instant Reformulation Styles */}
+                    <div className="space-y-2 pt-1">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-emerald-200/75">
+                        Reformular novamente com 1 clique
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {IMAGE_QUICK_REFORMULATIONS.map((preset) => (
+                          <button
+                            key={preset.label}
+                            type="button"
+                            disabled={sending}
+                            onClick={() => {
+                              const basePhoto =
+                                activeImageAsset.originalDataUrl || activeImageAsset.resultDataUrl;
+                              void handleSendMessage(preset.prompt, 'image', {
+                                name: `${sanitizeSlug(activeImageAsset.title)}.jpg`,
+                                dataUrl: basePhoto,
+                              });
+                            }}
+                            className="px-3 py-1.5 rounded-lg bg-black/50 hover:bg-amber-400/15 border border-amber-400/30 hover:border-amber-400 text-xs font-semibold text-amber-200 cursor-pointer disabled:opacity-50"
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {generatedImages.length > 1 && (
+                      <div className="pt-3 border-t border-amber-400/20 space-y-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-emerald-200/75">
+                          Histórico de Imagens Criadas ({generatedImages.length})
+                        </p>
+                        <div className="flex items-center gap-2.5 overflow-x-auto conae-scroll pb-1">
+                          {generatedImages.map((item) => (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => {
+                                setActiveImageId(item.id);
+                                setShowOriginalCompare(false);
+                              }}
+                              className={`shrink-0 w-20 h-20 rounded-xl overflow-hidden border-2 cursor-pointer transition-all ${
+                                activeImageAsset.id === item.id
+                                  ? 'border-amber-400 scale-105'
+                                  : 'border-white/15 opacity-70 hover:opacity-100'
+                              }`}
+                            >
+                              <img
+                                src={item.resultDataUrl}
+                                alt={item.title}
+                                referrerPolicy="no-referrer"
+                                className="w-full h-full object-cover"
+                              />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="h-full min-h-[420px] flex items-center justify-center">
+                    <div className="max-w-lg w-full rounded-2xl bg-[#07140e] border border-amber-400/25 p-6 sm:p-8 text-center space-y-4">
+                      <div className="w-12 h-12 rounded-2xl bg-amber-400/15 border border-amber-400/40 text-amber-300 flex items-center justify-center mx-auto">
+                        <Wand2 className="w-6 h-6" />
+                      </div>
+                      <h2 className="font-display text-2xl font-bold text-white">
+                        Estúdio de Criação & Reformulação de Imagens
+                      </h2>
+                      <p className="text-sm text-emerald-200/80 leading-relaxed">
+                        Peça no chat para criar qualquer banner, cartaz, convite ou arte em alta definição — ou clique em <strong>Foto</strong> para enviar uma imagem sua e pedir ao Robô Duque para reformular cores, iluminação, moldura, formato e textos!
+                      </p>
+                      <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStudioMode('image');
+                            setMobilePane('chat');
+                            photoInputRef.current?.click();
+                          }}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-xs cursor-pointer"
+                        >
+                          <ImagePlus className="w-4 h-4" />
+                          <span>Enviar Foto para Reformular</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
 
             {rightTab === 'publish' && (

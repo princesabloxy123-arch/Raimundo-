@@ -528,15 +528,73 @@ export interface DukeEventRecord extends DukeEventSpec {
   updatedAt?: unknown;
 }
 
+export type DukeStudioMode = 'auto' | 'chat' | 'image' | 'event';
+
+export type DukeImageAspectRatio = '1:1' | '16:9' | '9:16' | '4:5';
+
+export type DukeImageLayout =
+  | 'full_bleed'
+  | 'cinematic_bottom'
+  | 'editorial_card'
+  | 'framed_poster'
+  | 'split_hero';
+
+export type DukeImageFrameStyle = 'none' | 'gold_double' | 'minimal_white' | 'neon_glow';
+
+export type DukeImageMotif = 'rays' | 'grid' | 'waves' | 'orbs' | 'rings' | 'emblem';
+
+export interface DukeImageDesignSpec {
+  mode: 'create' | 'reformulate';
+  title: string;
+  aspectRatio: DukeImageAspectRatio;
+  layout: DukeImageLayout;
+  frameStyle: DukeImageFrameStyle;
+  decorativeMotif: DukeImageMotif;
+  bgStart: string;
+  bgMid: string;
+  bgEnd: string;
+  accentColor: string;
+  textPrimary: string;
+  textMuted: string;
+  badgeText?: string;
+  headline?: string;
+  subheadline?: string;
+  footerText?: string;
+  ctaText?: string;
+  brightness?: number;
+  contrast?: number;
+  saturate?: number;
+  sepia?: number;
+  hueRotate?: number;
+  vignette?: number;
+  tintColor?: string;
+  tintOpacity?: number;
+  emblemType?: 'crown' | 'globe' | 'star' | 'cross' | 'spark' | 'shield' | 'none';
+}
+
+export interface DukeGeneratedAsset {
+  id: string;
+  title: string;
+  mode: 'create' | 'reformulate';
+  aspectRatio: DukeImageAspectRatio;
+  resultDataUrl: string;
+  originalDataUrl?: string;
+  designSpec: DukeImageDesignSpec;
+  createdAt: string;
+}
+
 export interface DukeChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   createdAt: string;
+  modeUsed?: 'chat' | 'image' | 'event';
   publishedUrl?: string;
   attachmentPreview?: string;
   attachmentName?: string;
+  generatedImage?: DukeGeneratedAsset;
 }
+
 
 
 
