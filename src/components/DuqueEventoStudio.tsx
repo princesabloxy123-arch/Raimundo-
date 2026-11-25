@@ -58,13 +58,25 @@ import type {
   DukeEventSpec,
   DukeEventTheme,
   DukeGeneratedAsset,
+  DukeGraphicOverlay,
   DukeImageAspectRatio,
   DukeImageDesignSpec,
   DukeImageFrameStyle,
+  DukeImageLayout,
+  DukeLightFx,
+  DukePhotoStyle,
+  DukeQuickOption,
+  DukeRelightPreset,
   DukeStudioMode,
   DukeWebSource,
   UserProfile,
 } from '../types';
+import {
+  DUKE_10000_OPTIONS,
+  DUKE_OPTION_CATEGORIES,
+  type DukeCatalogOption,
+  type DukeOptionCategory,
+} from '../data/duke200Options';
 import { compressDataUrlForFirestoreBanner, renderDukeImageStudio } from '../utils/dukeImageStudio';
 import { DukeRichMessage } from './DukeRichMessage';
 import { buildStandaloneEventHtml, PublicEventPage } from './PublicEventPage';
@@ -80,33 +92,6 @@ interface DuqueEventoStudioProps {
 
 const CONAE_DUQUE_ROBOT_3D = '/src/assets/images/conae_duque_robot_3d_1795637461401.jpg';
 const CONAE_AI_BRAIN_3D = '/src/assets/images/conae_ai_brain_3d_1795638395875.jpg';
-
-const STARTER_PROMPTS: Array<{ label: string; mode: DukeStudioMode; prompt: string }> = [
-  {
-    label: 'Criar Arte / Escrever na Foto HD',
-    mode: 'image',
-    prompt:
-      'Crie um cartaz oficial elegante em verde esmeralda e dourado para o Grande Congresso CONAE 2026 em Goiânia, formato quadrado 1:1, com selo VIP e chamada para inscrição.',
-  },
-  {
-    label: 'Escrever Texto & Legenda Profissional',
-    mode: 'chat',
-    prompt:
-      'Escreva um texto impactante de divulgação para WhatsApp e Instagram convidando pastores, líderes e empresários para o nosso próximo encontro oficial da CONAE.',
-  },
-  {
-    label: 'Gerar Código com Prévia Ao Vivo',
-    mode: 'chat',
-    prompt:
-      'Gere um código HTML + CSS completo de um cartão de convite digital elegante em verde escuro e dourado com botão de confirmação no WhatsApp.',
-  },
-  {
-    label: 'Montar Evento & Gerar Link Fixo',
-    mode: 'event',
-    prompt:
-      'Monte um Congresso Ministerial Nacional com 3 dias de programação, 4 painéis principais, preletores confirmados e ingressos Gratuito e VIP em Goiânia-GO.',
-  },
-];
 
 const MODE_OPTIONS: Array<{ id: DukeStudioMode; label: string }> = [
   { id: 'auto', label: 'Automático' },
@@ -212,7 +197,7 @@ const WELCOME_MESSAGE: DukeChatMessage = {
   role: 'assistant',
   createdAt: new Date().toISOString(),
   content:
-    'Olá! Sou o **Robô Duque da CONAE**, seu estúdio completo de Inteligência Artificial. Posso **pesquisar na web ao vivo**, **pensar em profundidade**, escrever **textos e códigos com prévia ao vivo**, **escrever na sua foto e modificar imagens em tempo real**, e montar **eventos completos com link fixo**. Como posso te ajudar agora?',
+    'Olá! Sou o **Robô Duque da CONAE**. Busco no **Google automaticamente**, entrego **várias opções** em tudo o que você pedir, tenho **10.000 opções prontas de 1 clique** abaixo, e toda vez que você enviar ou pedir para mudar uma foto eu faço um **design moderno direto na própria foto** (iluminação HDR, arte digital, neon e estúdio 3D) em **3 opções** para você escolher na hora!',
 };
 
 export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
@@ -226,7 +211,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
   const [messages, setMessages] = useState<DukeChatMessage[]>([WELCOME_MESSAGE]);
 
   const [studioMode, setStudioMode] = useState<DukeStudioMode>('auto');
-  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [webSearchEnabled, setWebSearchEnabled] = useState(true);
   const [deepThinkingEnabled, setDeepThinkingEnabled] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [sending, setSending] = useState(false);
@@ -241,6 +226,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
 
   const [generatedImages, setGeneratedImages] = useState<DukeGeneratedAsset[]>([]);
   const [activeImageId, setActiveImageId] = useState<string | null>(null);
+  const [selectedChatVariantByMsg, setSelectedChatVariantByMsg] = useState<Record<string, number>>({});
   const [showOriginalCompare, setShowOriginalCompare] = useState(false);
   const [updatingLiveImage, setUpdatingLiveImage] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
@@ -254,9 +240,53 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
   const [signingIn, setSigningIn] = useState(false);
 
   const [stagedAttachment, setStagedAttachment] = useState<StagedAttachment | null>(null);
+  const [lastUploadedPhoto, setLastUploadedPhoto] = useState<{ name: string; dataUrl: string } | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
+
+  const [show200Catalog, setShow200Catalog] = useState(true);
+  const [catalogCategory, setCatalogCategory] = useState<'Todas' | DukeOptionCategory>('Todas');
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const [catalogScrollTop, setCatalogScrollTop] = useState(0);
+  const catalogListRef = useRef<HTMLDivElement | null>(null);
+
+  const CATALOG_ROW_HEIGHT = 68;
+  const CATALOG_VIEWPORT_HEIGHT = 340;
+
+  const filteredCatalogOptions = useMemo(() => {
+    const q = catalogSearch
+      .trim()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+    return DUKE_10000_OPTIONS.filter((item) => {
+      if (catalogCategory !== 'Todas' && item.category !== catalogCategory) return false;
+      if (!q) return true;
+      return item.searchText.includes(q);
+    });
+  }, [catalogCategory, catalogSearch]);
+
+  useEffect(() => {
+    setCatalogScrollTop(0);
+    if (catalogListRef.current) {
+      catalogListRef.current.scrollTop = 0;
+    }
+  }, [catalogCategory, catalogSearch]);
+
+  const virtualCatalogWindow = useMemo(() => {
+    const total = filteredCatalogOptions.length;
+    const overscan = 6;
+    const startIdx = Math.max(0, Math.floor(catalogScrollTop / CATALOG_ROW_HEIGHT) - overscan);
+    const visibleCount = Math.ceil(CATALOG_VIEWPORT_HEIGHT / CATALOG_ROW_HEIGHT) + overscan * 2;
+    const endIdx = Math.min(total, startIdx + visibleCount);
+    return {
+      totalHeight: total * CATALOG_ROW_HEIGHT,
+      startIdx,
+      endIdx,
+      items: filteredCatalogOptions.slice(startIdx, endIdx),
+    };
+  }, [filteredCatalogOptions, catalogScrollTop]);
 
   const activeImageAsset = useMemo(
     () => generatedImages.find((img) => img.id === activeImageId) || generatedImages[0] || null,
@@ -441,6 +471,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
       const isImage = file.type.startsWith('image/');
       if (isImage) {
         const { dataUrl, base64Data } = await compressImageDataUrl(file);
+        setLastUploadedPhoto({ name: file.name, dataUrl });
         setStagedAttachment({
           name: file.name,
           mimeType: 'image/jpeg',
@@ -551,6 +582,27 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
   ) => {
     const text = (overrideText ?? inputValue).trim();
     const effectiveMode = overrideMode ?? studioMode;
+
+    // Automatically reuse the most recent uploaded photo whenever the user asks to modify/redesign a photo
+    const normalizedForPhotoReuse = text
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+    const mentionsPhotoEdit =
+      /\b(foto|imagem|muda|mudar|modifica|modificar|altera|alterar|reformula|reformular|desing|design|moderna|moderno|fundo|borda|moldura|brilho|neon|escreve na|escreva na|coloca na|coloque na|transforma|transformar)\b/.test(
+        normalizedForPhotoReuse
+      );
+    const reusablePhoto =
+      lastUploadedPhoto ||
+      (activeImageAsset?.originalDataUrl
+        ? { name: 'foto-atual.jpg', dataUrl: activeImageAsset.originalDataUrl }
+        : null);
+    const shouldAutoReusePhoto =
+      !overrideSourceImage &&
+      !stagedAttachment &&
+      Boolean(reusablePhoto) &&
+      (effectiveMode === 'image' || mentionsPhotoEdit);
+
     const activeAttachment: StagedAttachment | null = overrideSourceImage
       ? {
           name: overrideSourceImage.name,
@@ -559,9 +611,17 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
           dataUrl: overrideSourceImage.dataUrl,
           isImage: true,
         }
-      : overrideText
+      : stagedAttachment
         ? stagedAttachment
-        : stagedAttachment;
+        : shouldAutoReusePhoto && reusablePhoto
+          ? {
+              name: reusablePhoto.name,
+              mimeType: 'image/jpeg',
+              base64Data: reusablePhoto.dataUrl.split(',')[1] || '',
+              dataUrl: reusablePhoto.dataUrl,
+              isImage: true,
+            }
+          : null;
 
     if ((!text && !activeAttachment) || sending) return;
 
@@ -577,6 +637,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
     setApiError(null);
     setPublishError(null);
     setVoiceNotice(null);
+    setShow200Catalog(false);
     if (!overrideText) setInputValue('');
     setStagedAttachment(null);
 
@@ -629,7 +690,9 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
         shouldPublish?: boolean;
         event?: DukeEventSpec;
         imageDesign?: DukeImageDesignSpec;
+        imageVariants?: DukeImageDesignSpec[];
         sources?: DukeWebSource[];
+        quickOptions?: DukeQuickOption[];
       };
       try {
         payload = JSON.parse(rawText) as {
@@ -639,7 +702,9 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
           shouldPublish?: boolean;
           event?: DukeEventSpec;
           imageDesign?: DukeImageDesignSpec;
+          imageVariants?: DukeImageDesignSpec[];
           sources?: DukeWebSource[];
+          quickOptions?: DukeQuickOption[];
         };
       } catch {
         throw new Error(
@@ -658,26 +723,41 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
       const modeUsed = payload.modeUsed || (payload.imageDesign ? 'image' : payload.event ? 'event' : 'chat');
       let publishedUrl: string | undefined;
       let generatedImage: DukeGeneratedAsset | undefined;
+      let generatedBatch: DukeGeneratedAsset[] | undefined;
 
-      if (modeUsed === 'image' && payload.imageDesign) {
-        const renderedPng = await renderDukeImageStudio(
-          payload.imageDesign,
-          activeAttachment?.isImage ? activeAttachment.dataUrl : undefined
+      if (modeUsed === 'image' && (payload.imageVariants?.length || payload.imageDesign)) {
+        const specsToRender =
+          Array.isArray(payload.imageVariants) && payload.imageVariants.length > 0
+            ? payload.imageVariants.slice(0, 3)
+            : payload.imageDesign
+              ? [payload.imageDesign]
+              : [];
+        const sourcePhotoUrl = activeAttachment?.isImage ? activeAttachment.dataUrl : undefined;
+        const baseTs = Date.now();
+        const renderedAssets = await Promise.all(
+          specsToRender.map(async (spec, idx) => {
+            const renderedPng = await renderDukeImageStudio(spec, sourcePhotoUrl);
+            const asset: DukeGeneratedAsset = {
+              id: `img_${baseTs}_${idx}`,
+              title: spec.title || `Opção ${idx + 1}`,
+              mode: spec.mode,
+              aspectRatio: spec.aspectRatio,
+              resultDataUrl: renderedPng,
+              originalDataUrl: sourcePhotoUrl,
+              designSpec: spec,
+              createdAt: new Date().toISOString(),
+            };
+            return asset;
+          })
         );
-        generatedImage = {
-          id: `img_${Date.now()}`,
-          title: payload.imageDesign.title || 'Arte Robô Duque',
-          mode: payload.imageDesign.mode,
-          aspectRatio: payload.imageDesign.aspectRatio,
-          resultDataUrl: renderedPng,
-          originalDataUrl: activeAttachment?.isImage ? activeAttachment.dataUrl : undefined,
-          designSpec: payload.imageDesign,
-          createdAt: new Date().toISOString(),
-        };
-        setGeneratedImages((prev) => [generatedImage!, ...prev].slice(0, 12));
-        setActiveImageId(generatedImage.id);
-        setShowOriginalCompare(false);
-        setRightTab('image');
+        if (renderedAssets.length > 0) {
+          generatedImage = renderedAssets[0];
+          generatedBatch = renderedAssets;
+          setGeneratedImages((prev) => [...renderedAssets, ...prev].slice(0, 18));
+          setActiveImageId(renderedAssets[0].id);
+          setShowOriginalCompare(false);
+          setRightTab('image');
+        }
       } else if (modeUsed === 'event' && payload.event) {
         const updatedEvent: DukeEventSpec = {
           ...payload.event,
@@ -706,12 +786,17 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
         content:
           payload.reply ||
           (modeUsed === 'image'
-            ? 'Pronto! Criei sua imagem em alta definição.'
-            : 'Pronto! Veja o resultado abaixo.'),
+            ? 'Pronto! Criei 3 opções modernas em alta definição para você escolher.'
+            : 'Pronto! Veja as opções abaixo.'),
         createdAt: new Date().toISOString(),
         publishedUrl,
         generatedImage,
+        generatedImages: generatedBatch,
         sources: Array.isArray(payload.sources) && payload.sources.length > 0 ? payload.sources : undefined,
+        quickOptions:
+          Array.isArray(payload.quickOptions) && payload.quickOptions.length > 0
+            ? payload.quickOptions
+            : undefined,
       };
       setMessages((prev) => [...prev, aiMsg]);
     } catch (err) {
@@ -870,13 +955,33 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
     setApiError(null);
     setVoiceNotice(null);
     setStagedAttachment(null);
+    setLastUploadedPhoto(null);
     setInputValue('');
+    setShow200Catalog(true);
     setMessages([
       {
         ...WELCOME_MESSAGE,
         createdAt: new Date().toISOString(),
       },
     ]);
+  };
+
+  const handleRunCatalogOption = (opt: DukeCatalogOption) => {
+    setStudioMode(opt.mode);
+    setShow200Catalog(false);
+    const activePhoto =
+      stagedAttachment?.isImage && stagedAttachment.dataUrl
+        ? { name: stagedAttachment.name, dataUrl: stagedAttachment.dataUrl }
+        : lastUploadedPhoto
+          ? lastUploadedPhoto
+          : activeImageAsset?.originalDataUrl
+            ? { name: 'foto-atual.jpg', dataUrl: activeImageAsset.originalDataUrl }
+            : undefined;
+    if (opt.mode === 'image' && activePhoto) {
+      void handleSendMessage(opt.prompt, 'image', activePhoto);
+    } else {
+      void handleSendMessage(opt.prompt, opt.mode);
+    }
   };
 
   const handleLiveUpdateImageSpec = async (patch: Partial<DukeImageDesignSpec>) => {
@@ -1234,45 +1339,156 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                     <p className="whitespace-pre-line">{msg.content}</p>
                   )}
 
-                  {msg.generatedImage && (
-                    <div className="rounded-xl overflow-hidden border border-amber-400/45 bg-black/55 space-y-2 p-2">
-                      <div className="rounded-lg overflow-hidden bg-black/60">
-                        <img
-                          src={msg.generatedImage.resultDataUrl}
-                          alt={msg.generatedImage.title}
-                          referrerPolicy="no-referrer"
-                          className="w-full max-h-64 object-contain block mx-auto"
-                        />
+                  {(msg.generatedImages?.length || msg.generatedImage) && (() => {
+                    const variants =
+                      msg.generatedImages && msg.generatedImages.length > 0
+                        ? msg.generatedImages
+                        : msg.generatedImage
+                          ? [msg.generatedImage]
+                          : [];
+                    const selectedIdx = Math.min(
+                      selectedChatVariantByMsg[msg.id] ?? 0,
+                      Math.max(0, variants.length - 1)
+                    );
+                    const currentVariant = variants[selectedIdx];
+                    if (!currentVariant) return null;
+
+                    return (
+                      <div className="rounded-xl overflow-hidden border border-amber-400/45 bg-black/55 space-y-2.5 p-2.5">
+                        {variants.length > 1 && (
+                          <div className="flex items-center justify-between gap-1.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300">
+                              {variants.length} Opções Modernas
+                            </span>
+                            <div className="flex items-center gap-1">
+                              {variants.map((v, vIdx) => (
+                                <button
+                                  key={v.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedChatVariantByMsg((prev) => ({ ...prev, [msg.id]: vIdx }));
+                                    setActiveImageId(v.id);
+                                    setShowOriginalCompare(false);
+                                  }}
+                                  className={`px-2 py-0.5 rounded-md text-[10px] font-bold cursor-pointer transition-colors ${
+                                    selectedIdx === vIdx
+                                      ? 'bg-amber-400 text-neutral-950'
+                                      : 'bg-black/60 text-emerald-100 border border-white/15 hover:border-amber-400/60'
+                                  }`}
+                                >
+                                  Opção {vIdx + 1}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="rounded-lg overflow-hidden bg-black/60">
+                          <img
+                            src={currentVariant.resultDataUrl}
+                            alt={currentVariant.title}
+                            referrerPolicy="no-referrer"
+                            className="w-full max-h-64 object-contain block mx-auto"
+                          />
+                        </div>
+
+                        {variants.length > 1 && (
+                          <div className="grid grid-cols-3 gap-1.5">
+                            {variants.map((v, vIdx) => (
+                              <button
+                                key={v.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedChatVariantByMsg((prev) => ({ ...prev, [msg.id]: vIdx }));
+                                  setActiveImageId(v.id);
+                                  setShowOriginalCompare(false);
+                                }}
+                                className={`group relative rounded-lg overflow-hidden border-2 cursor-pointer transition-all bg-black/60 ${
+                                  selectedIdx === vIdx
+                                    ? 'border-amber-400 ring-1 ring-amber-300/60'
+                                    : 'border-white/15 opacity-80 hover:opacity-100 hover:border-amber-400/50'
+                                }`}
+                              >
+                                <img
+                                  src={v.resultDataUrl}
+                                  alt={v.title}
+                                  referrerPolicy="no-referrer"
+                                  className="w-full h-16 object-cover block"
+                                />
+                                <span className="absolute bottom-0 inset-x-0 bg-black/75 text-[9px] font-bold text-amber-200 py-0.5 text-center truncate px-1">
+                                  Opção {vIdx + 1}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="flex flex-wrap items-center gap-1.5 px-0.5">
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadGeneratedImage(currentVariant)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-[11px] cursor-pointer"
+                          >
+                            <Download className="w-3 h-3" />
+                            <span>Baixar PNG</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveImageId(currentVariant.id);
+                              setRightTab('image');
+                              setMobilePane('workspace');
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-700/80 hover:bg-emerald-600 text-white font-semibold text-[11px] cursor-pointer"
+                          >
+                            <Wand2 className="w-3 h-3" />
+                            <span>Editar Ao Vivo</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleApplyImageToEventBanner(currentVariant)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-black/60 hover:bg-black/80 border border-amber-400/35 text-amber-200 font-semibold text-[11px] cursor-pointer"
+                          >
+                            <ImageIcon className="w-3 h-3" />
+                            <span>Capa do Evento</span>
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex flex-wrap items-center gap-1.5 px-0.5">
-                        <button
-                          type="button"
-                          onClick={() => handleDownloadGeneratedImage(msg.generatedImage!)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-[11px] cursor-pointer"
-                        >
-                          <Download className="w-3 h-3" />
-                          <span>Baixar PNG</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveImageId(msg.generatedImage!.id);
-                            setRightTab('image');
-                            setMobilePane('workspace');
-                          }}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-700/80 hover:bg-emerald-600 text-white font-semibold text-[11px] cursor-pointer"
-                        >
-                          <Wand2 className="w-3 h-3" />
-                          <span>Abrir Estúdio</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleApplyImageToEventBanner(msg.generatedImage!)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-black/60 hover:bg-black/80 border border-amber-400/35 text-amber-200 font-semibold text-[11px] cursor-pointer"
-                        >
-                          <ImageIcon className="w-3 h-3" />
-                          <span>Capa do Evento</span>
-                        </button>
+                    );
+                  })()}
+
+                  {msg.role === 'assistant' && msg.quickOptions && msg.quickOptions.length > 0 && (
+                    <div className="pt-1.5 space-y-1.5 border-t border-white/10">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300/85 block">
+                        Opções rápidas para escolher:
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {msg.quickOptions.map((opt, idx) => (
+                          <button
+                            key={`${msg.id}_opt_${idx}`}
+                            type="button"
+                            disabled={sending}
+                            onClick={() => {
+                              const nextMode = opt.mode || studioMode;
+                              if (opt.mode) setStudioMode(opt.mode);
+                              const basePhoto =
+                                msg.generatedImages?.[0]?.originalDataUrl ||
+                                msg.generatedImage?.originalDataUrl ||
+                                activeImageAsset?.originalDataUrl;
+                              if (opt.mode === 'image' && basePhoto) {
+                                void handleSendMessage(opt.prompt, 'image', {
+                                  name: 'foto-atual.jpg',
+                                  dataUrl: basePhoto,
+                                });
+                              } else {
+                                void handleSendMessage(opt.prompt, nextMode);
+                              }
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-black/50 hover:bg-amber-400/20 border border-amber-400/35 hover:border-amber-400 text-[11px] font-semibold text-amber-200 hover:text-amber-100 text-left cursor-pointer transition-colors disabled:opacity-50"
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
                       </div>
                     </div>
                   )}
@@ -1344,29 +1560,172 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
               </div>
             ))}
 
-            {/* Quick Starter Prompts covering ChatGPT Text, Code, Image Studio & Event Builder */}
-            {messages.length <= 1 && !sending && (
-              <div className="pt-2 space-y-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-300/80">
-                  Comece com 1 clique ou envie foto/pedido abaixo
-                </p>
-                <div className="grid grid-cols-1 gap-2">
-                  {STARTER_PROMPTS.map((item) => (
+            {/* Scrollable 10,000-Option 1-Click Virtualized Catalog inside the Robô Duque chat */}
+            {show200Catalog && !sending && (
+              <div className="pt-1">
+                <div className="rounded-2xl bg-[#071610] border border-amber-400/40 p-3 space-y-2.5 shadow-lg">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                        <span>10.000 Opções Prontas — Clique e o Robô Faz</span>
+                      </p>
+                      <p className="text-[10px] text-emerald-200/75">
+                        Role para ler ({filteredCatalogOptions.length.toLocaleString('pt-BR')} de{' '}
+                        {DUKE_10000_OPTIONS.length.toLocaleString('pt-BR')}) e toque em qualquer uma para executar com 1 clique
+                      </p>
+                    </div>
+                    {messages.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setShow200Catalog(false)}
+                        aria-label="Fechar lista de 10.000 opções"
+                        className="p-1 rounded-lg bg-black/50 hover:bg-black/80 border border-white/15 text-emerald-200 hover:text-white cursor-pointer shrink-0"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Instant Filter Search */}
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-amber-300/80 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={catalogSearch}
+                      onChange={(e) => setCatalogSearch(e.target.value)}
+                      placeholder="Filtrar entre as 10.000 opções (ex: foto, neon, convite, contrato, código)..."
+                      className="w-full rounded-xl bg-black/55 border border-amber-400/25 focus:border-amber-400 pl-8 pr-7 py-1.5 text-xs text-white placeholder:text-emerald-200/45 focus:outline-none"
+                    />
+                    {catalogSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setCatalogSearch('')}
+                        aria-label="Limpar busca"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-emerald-200/70 hover:text-white cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Category Tabs (Horizontal Scroll) */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto conae-scroll pb-0.5">
                     <button
-                      key={item.label}
                       type="button"
-                      onClick={() => {
-                        setStudioMode(item.mode);
-                        void handleSendMessage(item.prompt, item.mode);
-                      }}
-                      className="text-left rounded-xl bg-[#081711] hover:bg-[#0d241b] border border-amber-400/25 hover:border-amber-400/55 px-3.5 py-2.5 transition-colors cursor-pointer space-y-0.5"
+                      onClick={() => setCatalogCategory('Todas')}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap cursor-pointer transition-colors ${
+                        catalogCategory === 'Todas'
+                          ? 'bg-amber-400 text-neutral-950'
+                          : 'bg-black/50 text-emerald-100/80 border border-amber-400/20 hover:border-amber-400/50'
+                      }`}
                     >
-                      <span className="block text-xs font-bold text-amber-200">{item.label}</span>
-                      <span className="block text-[11px] text-emerald-200/75 line-clamp-2">
-                        {item.prompt}
-                      </span>
+                      Todas ({DUKE_10000_OPTIONS.length.toLocaleString('pt-BR')})
                     </button>
-                  ))}
+                    {DUKE_OPTION_CATEGORIES.map((cat) => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setCatalogCategory(cat)}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap cursor-pointer transition-colors ${
+                          catalogCategory === cat
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-black/50 text-emerald-100/80 border border-amber-400/20 hover:border-amber-400/50'
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Quick Jump Markers for navigating all 10,000 options effortlessly */}
+                  {filteredCatalogOptions.length > 500 && (
+                    <div className="flex items-center gap-1 overflow-x-auto conae-scroll">
+                      <span className="text-[10px] text-emerald-200/60 shrink-0 pr-0.5">Ir para:</span>
+                      {[0, 0.25, 0.5, 0.75, 0.99].map((ratio) => {
+                        const targetIdx = Math.min(
+                          filteredCatalogOptions.length - 1,
+                          Math.floor(filteredCatalogOptions.length * ratio)
+                        );
+                        const labelNum = targetIdx + 1;
+                        return (
+                          <button
+                            key={ratio}
+                            type="button"
+                            onClick={() => {
+                              const nextTop = targetIdx * CATALOG_ROW_HEIGHT;
+                              setCatalogScrollTop(nextTop);
+                              if (catalogListRef.current) {
+                                catalogListRef.current.scrollTop = nextTop;
+                              }
+                            }}
+                            className="px-2 py-0.5 rounded-md bg-black/50 hover:bg-amber-400/20 border border-amber-400/25 text-[10px] font-mono font-bold text-amber-300 cursor-pointer whitespace-nowrap"
+                          >
+                            #{labelNum.toLocaleString('pt-BR')}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Smooth 60 FPS Virtualized Scrollable List (10,000 options with zero lag) */}
+                  <div
+                    ref={catalogListRef}
+                    onScroll={(e) => setCatalogScrollTop(e.currentTarget.scrollTop)}
+                    style={{ maxHeight: `${CATALOG_VIEWPORT_HEIGHT}px` }}
+                    className="overflow-y-auto conae-scroll pr-1"
+                  >
+                    {filteredCatalogOptions.length === 0 ? (
+                      <p className="text-center text-xs text-emerald-200/70 py-6">
+                        Nenhuma opção encontrada para "{catalogSearch}".
+                      </p>
+                    ) : (
+                      <div
+                        className="relative w-full"
+                        style={{ height: `${virtualCatalogWindow.totalHeight}px` }}
+                      >
+                        {virtualCatalogWindow.items.map((item, offsetIdx) => {
+                          const realIndex = virtualCatalogWindow.startIdx + offsetIdx;
+                          return (
+                            <div
+                              key={item.id}
+                              style={{
+                                position: 'absolute',
+                                top: `${realIndex * CATALOG_ROW_HEIGHT}px`,
+                                left: 0,
+                                right: 0,
+                                height: `${CATALOG_ROW_HEIGHT - 6}px`,
+                              }}
+                            >
+                              <button
+                                type="button"
+                                disabled={sending}
+                                onClick={() => handleRunCatalogOption(item)}
+                                className="w-full h-full text-left rounded-xl bg-[#091c14] hover:bg-[#0f2c20] border border-amber-400/20 hover:border-amber-400/65 px-3 py-1.5 transition-colors cursor-pointer flex items-center justify-between gap-2.5 group disabled:opacity-50"
+                              >
+                                <div className="min-w-0 flex-1 space-y-0.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-mono text-[10px] font-bold text-amber-300/90 shrink-0">
+                                      #{String(item.id).padStart(5, '0')}
+                                    </span>
+                                    <span className="text-xs font-bold text-white group-hover:text-amber-200 truncate">
+                                      {item.title}
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-emerald-200/75 leading-snug truncate">
+                                    {item.description}
+                                  </p>
+                                </div>
+                                <span className="shrink-0 px-2 py-1 rounded-lg bg-amber-400/15 group-hover:bg-amber-400 text-amber-300 group-hover:text-neutral-950 font-bold text-[10px] transition-colors">
+                                  Fazer
+                                </span>
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -1408,8 +1767,30 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
             <div ref={chatEndRef} />
           </div>
 
-          {/* Mode Switcher Bar: Automático, Texto & Código, Imagem / Reformular, Evento & Link */}
+          {/* Mode Switcher Bar + 200 Opções Toggle Button */}
           <div className="px-3 pt-2.5 pb-1.5 border-t border-amber-400/20 bg-[#040b08] flex items-center gap-1.5 overflow-x-auto conae-scroll">
+            <button
+              type="button"
+              onClick={() => {
+                setShow200Catalog((prev) => {
+                  const next = !prev;
+                  if (next) {
+                    window.setTimeout(() => {
+                      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+                    }, 60);
+                  }
+                  return next;
+                });
+              }}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap cursor-pointer inline-flex items-center gap-1 transition-colors ${
+                show200Catalog
+                  ? 'bg-emerald-600 text-white border border-emerald-400'
+                  : 'bg-amber-400/15 text-amber-200 hover:bg-amber-400/25 border border-amber-400/45'
+              }`}
+            >
+              <Sparkles className="w-3 h-3 shrink-0" />
+              <span>10.000 Opções</span>
+            </button>
             {MODE_OPTIONS.map((opt) => (
               <button
                 key={opt.id}
@@ -2045,17 +2426,128 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                           </div>
                         </div>
 
-                        <div className="space-y-1.5">
+                        <div className="space-y-1.5 md:col-span-2">
                           <span className="text-[11px] font-semibold text-emerald-200/80 block">
-                            Moldura
+                            Design Moderno Direto na Própria Foto (Estilo IA)
                           </span>
                           <div className="flex flex-wrap gap-1.5">
                             {(
                               [
+                                { id: 'studio_relight', label: 'Estúdio HDR', layout: 'full_bleed', relight: 'emerald_royal', fx: 'prism_beams', overlay: 'editorial_lines' },
+                                { id: 'digital_art_pop', label: 'Arte Digital IA', layout: 'full_bleed', relight: 'cool_cyber', fx: 'neon_rings', overlay: 'glass_cards' },
+                                { id: 'neon_modern', label: 'Neon Futurista', layout: 'full_bleed', relight: 'violet_aura', fx: 'neon_rings', overlay: 'cyber_hud' },
+                                { id: 'editorial_cover', label: 'Capa de Revista', layout: 'full_bleed', relight: 'sunset_cinema', fx: 'studio_rim', overlay: 'editorial_lines' },
+                                { id: 'golden_gala', label: 'Gala Dourada', layout: 'full_bleed', relight: 'warm_gold', fx: 'bokeh_orbs', overlay: 'luxury_crest' },
+                                { id: 'backdrop_3d', label: 'Estúdio 3D + Fundo', layout: 'modern_backdrop', relight: 'warm_gold', fx: 'sun_flare', overlay: 'luxury_crest' },
+                              ] as Array<{
+                                id: DukePhotoStyle;
+                                label: string;
+                                layout: DukeImageLayout;
+                                relight: DukeRelightPreset;
+                                fx: DukeLightFx;
+                                overlay: DukeGraphicOverlay;
+                              }>
+                            ).map((st) => (
+                              <button
+                                key={st.id}
+                                type="button"
+                                onClick={() =>
+                                  void handleLiveUpdateImageSpec({
+                                    photoStyle: st.id,
+                                    layout: st.layout,
+                                    relightPreset: st.relight,
+                                    lightFx: st.fx,
+                                    graphicDesignOverlay: st.overlay,
+                                    bokehDepth: st.id === 'backdrop_3d' ? 0.35 : 0.48,
+                                    hdrClarity: 0.82,
+                                  })
+                                }
+                                className={`px-2.5 py-1 rounded-md text-[11px] font-bold cursor-pointer ${
+                                  (activeImageAsset.designSpec.photoStyle || 'studio_relight') === st.id
+                                    ? 'bg-amber-400 text-neutral-950'
+                                    : 'bg-[#081711] text-emerald-100 border border-white/15 hover:border-amber-400/50'
+                                }`}
+                              >
+                                {st.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5 md:col-span-2">
+                          <span className="text-[11px] font-semibold text-emerald-200/80 block">
+                            Iluminação & Cor Cinematográfica na Foto
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {(
+                              [
+                                { id: 'emerald_royal', label: 'Esmeralda Real' },
+                                { id: 'warm_gold', label: 'Ouro Quente' },
+                                { id: 'cool_cyber', label: 'Azul Cyber' },
+                                { id: 'sunset_cinema', label: 'Pôr do Sol' },
+                                { id: 'violet_aura', label: 'Aura Violeta' },
+                                { id: 'noir_luxury', label: 'Cinema P&B' },
+                              ] as Array<{ id: DukeRelightPreset; label: string }>
+                            ).map((rl) => (
+                              <button
+                                key={rl.id}
+                                type="button"
+                                onClick={() => void handleLiveUpdateImageSpec({ relightPreset: rl.id })}
+                                className={`px-2.5 py-1 rounded-md text-[11px] font-bold cursor-pointer ${
+                                  (activeImageAsset.designSpec.relightPreset || 'emerald_royal') === rl.id
+                                    ? 'bg-emerald-600 text-white'
+                                    : 'bg-[#081711] text-emerald-100 border border-white/15 hover:border-amber-400/50'
+                                }`}
+                              >
+                                {rl.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5 md:col-span-2">
+                          <span className="text-[11px] font-semibold text-emerald-200/80 block">
+                            Fundo Atrás da Foto & Enquadramento
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {(
+                              [
+                                { id: 'full_bleed', label: 'Foto Cheia Moderna' },
+                                { id: 'modern_backdrop', label: 'Fundo Moderno 3D' },
+                                { id: 'glass_showcase', label: 'Vidro Aurora' },
+                                { id: 'luxury_frame', label: 'Moldura Luxo' },
+                                { id: 'editorial_card', label: 'Card Editorial' },
+                              ] as Array<{ id: DukeImageLayout; label: string }>
+                            ).map((ly) => (
+                              <button
+                                key={ly.id}
+                                type="button"
+                                onClick={() => void handleLiveUpdateImageSpec({ layout: ly.id })}
+                                className={`px-2.5 py-1 rounded-md text-[11px] font-bold cursor-pointer ${
+                                  activeImageAsset.designSpec.layout === ly.id
+                                    ? 'bg-amber-400 text-neutral-950'
+                                    : 'bg-[#081711] text-emerald-100 border border-white/15 hover:border-amber-400/50'
+                                }`}
+                              >
+                                {ly.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5 md:col-span-2">
+                          <span className="text-[11px] font-semibold text-emerald-200/80 block">
+                            Bordas Inteligentes
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {(
+                              [
+                                { id: 'luxury_bevel', label: 'Luxo Chanfrado' },
+                                { id: 'glass_modern', label: 'Vidro Moderno' },
                                 { id: 'gold_double', label: 'Ouro Duplo' },
-                                { id: 'minimal_white', label: 'Branco Clean' },
                                 { id: 'neon_glow', label: 'Brilho Neon' },
-                                { id: 'none', label: 'Sem Moldura' },
+                                { id: 'minimal_white', label: 'Branco Clean' },
+                                { id: 'none', label: 'Sem Borda' },
                               ] as Array<{ id: DukeImageFrameStyle; label: string }>
                             ).map((fr) => (
                               <button

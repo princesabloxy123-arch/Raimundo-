@@ -533,15 +533,55 @@ export type DukeStudioMode = 'auto' | 'chat' | 'image' | 'event';
 export type DukeImageAspectRatio = '1:1' | '16:9' | '9:16' | '4:5';
 
 export type DukeImageLayout =
+  | 'modern_backdrop'
+  | 'glass_showcase'
+  | 'luxury_frame'
   | 'full_bleed'
   | 'cinematic_bottom'
   | 'editorial_card'
   | 'framed_poster'
   | 'split_hero';
 
-export type DukeImageFrameStyle = 'none' | 'gold_double' | 'minimal_white' | 'neon_glow';
+export type DukeImageFrameStyle =
+  | 'none'
+  | 'gold_double'
+  | 'minimal_white'
+  | 'neon_glow'
+  | 'glass_modern'
+  | 'luxury_bevel';
 
 export type DukeImageMotif = 'rays' | 'grid' | 'waves' | 'orbs' | 'rings' | 'emblem';
+
+export type DukePhotoStyle =
+  | 'studio_relight'
+  | 'neon_modern'
+  | 'editorial_cover'
+  | 'digital_art_pop'
+  | 'golden_gala'
+  | 'backdrop_3d';
+
+export type DukeRelightPreset =
+  | 'warm_gold'
+  | 'cool_cyber'
+  | 'emerald_royal'
+  | 'sunset_cinema'
+  | 'violet_aura'
+  | 'noir_luxury';
+
+export type DukeLightFx =
+  | 'bokeh_orbs'
+  | 'prism_beams'
+  | 'neon_rings'
+  | 'sun_flare'
+  | 'studio_rim'
+  | 'none';
+
+export type DukeGraphicOverlay =
+  | 'editorial_lines'
+  | 'glass_cards'
+  | 'cyber_hud'
+  | 'luxury_crest'
+  | 'clean';
 
 export interface DukeImageDesignSpec {
   mode: 'create' | 'reformulate';
@@ -550,6 +590,12 @@ export interface DukeImageDesignSpec {
   layout: DukeImageLayout;
   frameStyle: DukeImageFrameStyle;
   decorativeMotif: DukeImageMotif;
+  photoStyle?: DukePhotoStyle;
+  relightPreset?: DukeRelightPreset;
+  bokehDepth?: number;
+  hdrClarity?: number;
+  lightFx?: DukeLightFx;
+  graphicDesignOverlay?: DukeGraphicOverlay;
   bgStart: string;
   bgMid: string;
   bgEnd: string;
@@ -580,6 +626,12 @@ export interface DukeWebSource {
   uri: string;
 }
 
+export interface DukeQuickOption {
+  label: string;
+  prompt: string;
+  mode?: DukeStudioMode;
+}
+
 export interface DukeGeneratedAsset {
   id: string;
   title: string;
@@ -601,7 +653,9 @@ export interface DukeChatMessage {
   attachmentPreview?: string;
   attachmentName?: string;
   generatedImage?: DukeGeneratedAsset;
+  generatedImages?: DukeGeneratedAsset[];
   sources?: DukeWebSource[];
+  quickOptions?: DukeQuickOption[];
 }
 
 

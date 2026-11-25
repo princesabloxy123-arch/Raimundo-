@@ -69,13 +69,49 @@ export interface DukeEventSpec {
 
 export type DukeImageAspectRatio = '1:1' | '16:9' | '9:16' | '4:5';
 export type DukeImageLayout =
+  | 'modern_backdrop'
+  | 'glass_showcase'
+  | 'luxury_frame'
   | 'full_bleed'
   | 'cinematic_bottom'
   | 'editorial_card'
   | 'framed_poster'
   | 'split_hero';
-export type DukeImageFrameStyle = 'none' | 'gold_double' | 'minimal_white' | 'neon_glow';
+export type DukeImageFrameStyle =
+  | 'none'
+  | 'gold_double'
+  | 'minimal_white'
+  | 'neon_glow'
+  | 'glass_modern'
+  | 'luxury_bevel';
 export type DukeImageMotif = 'rays' | 'grid' | 'waves' | 'orbs' | 'rings' | 'emblem';
+export type DukePhotoStyle =
+  | 'studio_relight'
+  | 'neon_modern'
+  | 'editorial_cover'
+  | 'digital_art_pop'
+  | 'golden_gala'
+  | 'backdrop_3d';
+export type DukeRelightPreset =
+  | 'warm_gold'
+  | 'cool_cyber'
+  | 'emerald_royal'
+  | 'sunset_cinema'
+  | 'violet_aura'
+  | 'noir_luxury';
+export type DukeLightFx =
+  | 'bokeh_orbs'
+  | 'prism_beams'
+  | 'neon_rings'
+  | 'sun_flare'
+  | 'studio_rim'
+  | 'none';
+export type DukeGraphicOverlay =
+  | 'editorial_lines'
+  | 'glass_cards'
+  | 'cyber_hud'
+  | 'luxury_crest'
+  | 'clean';
 
 export interface DukeImageDesignSpec {
   mode: 'create' | 'reformulate';
@@ -84,6 +120,12 @@ export interface DukeImageDesignSpec {
   layout: DukeImageLayout;
   frameStyle: DukeImageFrameStyle;
   decorativeMotif: DukeImageMotif;
+  photoStyle?: DukePhotoStyle;
+  relightPreset?: DukeRelightPreset;
+  bokehDepth?: number;
+  hdrClarity?: number;
+  lightFx?: DukeLightFx;
+  graphicDesignOverlay?: DukeGraphicOverlay;
   bgStart: string;
   bgMid: string;
   bgEnd: string;
@@ -114,6 +156,12 @@ export interface DukeWebSource {
   uri: string;
 }
 
+export interface DukeQuickOption {
+  label: string;
+  prompt: string;
+  mode?: DukeStudioMode;
+}
+
 export interface DukeChatHistoryItem {
   role: 'user' | 'assistant';
   content: string;
@@ -142,7 +190,9 @@ export interface DukeChatResult {
   shouldPublish: boolean;
   event?: DukeEventSpec;
   imageDesign?: DukeImageDesignSpec;
+  imageVariants?: DukeImageDesignSpec[];
   sources?: DukeWebSource[];
+  quickOptions?: DukeQuickOption[];
 }
 
 const VALID_THEMES: ReadonlySet<DukeEventTheme> = new Set([
@@ -155,6 +205,9 @@ const VALID_THEMES: ReadonlySet<DukeEventTheme> = new Set([
 
 const VALID_ASPECTS: ReadonlySet<DukeImageAspectRatio> = new Set(['1:1', '16:9', '9:16', '4:5']);
 const VALID_LAYOUTS: ReadonlySet<DukeImageLayout> = new Set([
+  'modern_backdrop',
+  'glass_showcase',
+  'luxury_frame',
   'full_bleed',
   'cinematic_bottom',
   'editorial_card',
@@ -166,6 +219,8 @@ const VALID_FRAMES: ReadonlySet<DukeImageFrameStyle> = new Set([
   'gold_double',
   'minimal_white',
   'neon_glow',
+  'glass_modern',
+  'luxury_bevel',
 ]);
 const VALID_MOTIFS: ReadonlySet<DukeImageMotif> = new Set([
   'rays',
@@ -176,6 +231,37 @@ const VALID_MOTIFS: ReadonlySet<DukeImageMotif> = new Set([
   'emblem',
 ]);
 const VALID_EMBLEMS = new Set(['crown', 'globe', 'star', 'cross', 'spark', 'shield', 'none']);
+const VALID_PHOTO_STYLES: ReadonlySet<DukePhotoStyle> = new Set([
+  'studio_relight',
+  'neon_modern',
+  'editorial_cover',
+  'digital_art_pop',
+  'golden_gala',
+  'backdrop_3d',
+]);
+const VALID_RELIGHT_PRESETS: ReadonlySet<DukeRelightPreset> = new Set([
+  'warm_gold',
+  'cool_cyber',
+  'emerald_royal',
+  'sunset_cinema',
+  'violet_aura',
+  'noir_luxury',
+]);
+const VALID_LIGHT_FX: ReadonlySet<DukeLightFx> = new Set([
+  'bokeh_orbs',
+  'prism_beams',
+  'neon_rings',
+  'sun_flare',
+  'studio_rim',
+  'none',
+]);
+const VALID_GRAPHIC_OVERLAYS: ReadonlySet<DukeGraphicOverlay> = new Set([
+  'editorial_lines',
+  'glass_cards',
+  'cyber_hud',
+  'luxury_crest',
+  'clean',
+]);
 
 export function slugifyEventTitle(raw: string): string {
   const base = (raw || 'evento-duque')
@@ -317,31 +403,48 @@ function sanitizeEventSpec(raw: unknown, fallback?: Partial<DukeEventSpec> | nul
 function sanitizeImageDesignSpec(raw: unknown, hasPhoto: boolean): DukeImageDesignSpec {
   const obj = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const aspectRaw = typeof obj.aspectRatio === 'string' ? obj.aspectRatio.trim() : '1:1';
-  const layoutRaw = typeof obj.layout === 'string' ? obj.layout.trim() : 'cinematic_bottom';
-  const frameRaw = typeof obj.frameStyle === 'string' ? obj.frameStyle.trim() : 'gold_double';
+  const layoutRaw = typeof obj.layout === 'string' ? obj.layout.trim() : 'full_bleed';
+  const frameRaw = typeof obj.frameStyle === 'string' ? obj.frameStyle.trim() : 'luxury_bevel';
   const motifRaw = typeof obj.decorativeMotif === 'string' ? obj.decorativeMotif.trim() : 'orbs';
   const emblemRaw = typeof obj.emblemType === 'string' ? obj.emblemType.trim() : 'spark';
+  const photoStyleRaw = typeof obj.photoStyle === 'string' ? obj.photoStyle.trim() : 'studio_relight';
+  const relightRaw = typeof obj.relightPreset === 'string' ? obj.relightPreset.trim() : 'emerald_royal';
+  const lightFxRaw = typeof obj.lightFx === 'string' ? obj.lightFx.trim() : 'prism_beams';
+  const overlayRaw =
+    typeof obj.graphicDesignOverlay === 'string' ? obj.graphicDesignOverlay.trim() : 'editorial_lines';
 
   return {
     mode: hasPhoto ? 'reformulate' : 'create',
-    title: clampString(obj.title, hasPhoto ? 'Imagem Reformulada' : 'Arte Criada pelo ConaeDuque', 90),
+    title: clampString(obj.title, hasPhoto ? 'Redesign Moderno na Foto' : 'Arte Criada pelo ConaeDuque', 90),
     aspectRatio: VALID_ASPECTS.has(aspectRaw as DukeImageAspectRatio)
       ? (aspectRaw as DukeImageAspectRatio)
       : '1:1',
     layout: VALID_LAYOUTS.has(layoutRaw as DukeImageLayout)
       ? (layoutRaw as DukeImageLayout)
-      : hasPhoto
-        ? 'cinematic_bottom'
-        : 'full_bleed',
+      : 'full_bleed',
     frameStyle: VALID_FRAMES.has(frameRaw as DukeImageFrameStyle)
       ? (frameRaw as DukeImageFrameStyle)
-      : 'gold_double',
+      : 'luxury_bevel',
     decorativeMotif: VALID_MOTIFS.has(motifRaw as DukeImageMotif)
       ? (motifRaw as DukeImageMotif)
       : 'orbs',
-    bgStart: safeHex(obj.bgStart, '#04140d'),
-    bgMid: safeHex(obj.bgMid, '#0a2d1e'),
-    bgEnd: safeHex(obj.bgEnd, '#030a07'),
+    photoStyle: VALID_PHOTO_STYLES.has(photoStyleRaw as DukePhotoStyle)
+      ? (photoStyleRaw as DukePhotoStyle)
+      : 'studio_relight',
+    relightPreset: VALID_RELIGHT_PRESETS.has(relightRaw as DukeRelightPreset)
+      ? (relightRaw as DukeRelightPreset)
+      : 'emerald_royal',
+    bokehDepth: clampNum(obj.bokehDepth, hasPhoto ? 0.46 : 0, 0, 1),
+    hdrClarity: clampNum(obj.hdrClarity, 0.74, 0, 1),
+    lightFx: VALID_LIGHT_FX.has(lightFxRaw as DukeLightFx)
+      ? (lightFxRaw as DukeLightFx)
+      : 'prism_beams',
+    graphicDesignOverlay: VALID_GRAPHIC_OVERLAYS.has(overlayRaw as DukeGraphicOverlay)
+      ? (overlayRaw as DukeGraphicOverlay)
+      : 'editorial_lines',
+    bgStart: safeHex(obj.bgStart, '#041710'),
+    bgMid: safeHex(obj.bgMid, '#0b3524'),
+    bgEnd: safeHex(obj.bgEnd, '#030b08'),
     accentColor: safeHex(obj.accentColor, '#f59e0b'),
     textPrimary: safeHex(obj.textPrimary, '#ffffff'),
     textMuted: safeHex(obj.textMuted, '#d1fae5'),
@@ -350,14 +453,14 @@ function sanitizeImageDesignSpec(raw: unknown, hasPhoto: boolean): DukeImageDesi
     subheadline: typeof obj.subheadline === 'string' ? obj.subheadline.trim().slice(0, 140) : '',
     footerText: typeof obj.footerText === 'string' ? obj.footerText.trim().slice(0, 84) : '',
     ctaText: typeof obj.ctaText === 'string' ? obj.ctaText.trim().slice(0, 40) : '',
-    brightness: clampNum(obj.brightness, 1.06, 0.65, 1.5),
-    contrast: clampNum(obj.contrast, 1.14, 0.75, 1.6),
-    saturate: clampNum(obj.saturate, 1.16, 0, 1.9),
+    brightness: clampNum(obj.brightness, 1.07, 0.65, 1.5),
+    contrast: clampNum(obj.contrast, 1.15, 0.75, 1.6),
+    saturate: clampNum(obj.saturate, 1.18, 0, 1.9),
     sepia: clampNum(obj.sepia, 0, 0, 0.65),
     hueRotate: clampNum(obj.hueRotate, 0, -45, 45),
-    vignette: clampNum(obj.vignette, 0.52, 0, 0.9),
+    vignette: clampNum(obj.vignette, hasPhoto ? 0.42 : 0.48, 0, 0.9),
     tintColor: safeHex(obj.tintColor, '#f59e0b'),
-    tintOpacity: clampNum(obj.tintOpacity, 0.14, 0, 0.55),
+    tintOpacity: clampNum(obj.tintOpacity, hasPhoto ? 0.1 : 0.14, 0, 0.55),
     emblemType: VALID_EMBLEMS.has(emblemRaw)
       ? (emblemRaw as DukeImageDesignSpec['emblemType'])
       : 'spark',
@@ -372,6 +475,151 @@ function sanitizeImageDesignSpec(raw: unknown, hasPhoto: boolean): DukeImageDesi
         ? obj.fontStyle
         : 'editorial',
     fontScale: clampNum(obj.fontScale, 1, 0.72, 1.45),
+  };
+}
+
+function ensureThreeModernImageVariants(
+  primary: DukeImageDesignSpec,
+  rawVariants: unknown,
+  hasPhoto: boolean
+): DukeImageDesignSpec[] {
+  const sanitizedList: DukeImageDesignSpec[] = [];
+  if (Array.isArray(rawVariants)) {
+    for (const item of rawVariants) {
+      if (item && typeof item === 'object') {
+        sanitizedList.push(sanitizeImageDesignSpec(item, hasPhoto));
+      }
+    }
+  }
+
+  const firstRaw = sanitizedList[0] ?? primary;
+  const first: DukeImageDesignSpec = {
+    ...firstRaw,
+    layout: hasPhoto ? firstRaw.layout || 'full_bleed' : firstRaw.layout,
+    photoStyle: firstRaw.photoStyle || 'studio_relight',
+    relightPreset: firstRaw.relightPreset || 'emerald_royal',
+    bokehDepth: firstRaw.bokehDepth ?? (hasPhoto ? 0.48 : 0),
+    hdrClarity: firstRaw.hdrClarity ?? 0.78,
+    lightFx: firstRaw.lightFx || 'prism_beams',
+    graphicDesignOverlay: firstRaw.graphicDesignOverlay || 'editorial_lines',
+  };
+
+  const baseTitle = first.title.replace(/^Opção \d+\s*[—-]\s*/i, '').trim() || 'Design Moderno';
+
+  const second: DukeImageDesignSpec = sanitizedList[1]
+    ? sanitizedList[1]
+    : {
+        ...first,
+        title: `Opção 2 — Arte Digital Neon (${baseTitle})`,
+        layout: hasPhoto ? 'full_bleed' : 'editorial_card',
+        photoStyle: hasPhoto ? 'digital_art_pop' : 'neon_modern',
+        relightPreset: 'cool_cyber',
+        bokehDepth: hasPhoto ? 0.56 : 0,
+        hdrClarity: 0.88,
+        lightFx: 'neon_rings',
+        graphicDesignOverlay: 'glass_cards',
+        frameStyle: 'glass_modern',
+        decorativeMotif: 'waves',
+        bgStart: '#071630',
+        bgMid: '#0d2b57',
+        bgEnd: '#040a18',
+        accentColor: '#38bdf8',
+        textMuted: '#bae6fd',
+        fontStyle: 'modern',
+        brightness: Math.min(1.4, (first.brightness ?? 1.07) + 0.04),
+        contrast: Math.min(1.5, (first.contrast ?? 1.15) + 0.05),
+      };
+
+  const third: DukeImageDesignSpec = sanitizedList[2]
+    ? sanitizedList[2]
+    : {
+        ...first,
+        title: `Opção 3 — Estúdio 3D Gala Dourada (${baseTitle})`,
+        layout: hasPhoto ? 'modern_backdrop' : 'framed_poster',
+        photoStyle: 'golden_gala',
+        relightPreset: 'warm_gold',
+        bokehDepth: hasPhoto ? 0.42 : 0,
+        hdrClarity: 0.8,
+        lightFx: 'bokeh_orbs',
+        graphicDesignOverlay: 'luxury_crest',
+        frameStyle: 'luxury_bevel',
+        decorativeMotif: 'rays',
+        bgStart: '#1f0b1c',
+        bgMid: '#3b102c',
+        bgEnd: '#0b050a',
+        accentColor: '#fbbf24',
+        textMuted: '#fde68a',
+        fontStyle: 'impact',
+        saturate: Math.min(1.6, (first.saturate ?? 1.18) + 0.1),
+      };
+
+  return [first, second, third];
+}
+
+function extractQuickOptionsFromChat(rawText: string, userMessage: string): {
+  cleanReply: string;
+  quickOptions: DukeQuickOption[];
+} {
+  const match = rawText.match(/<<OPCOES>>([\s\S]*?)<<\/OPCOES>>/i);
+  const cleanReply = match
+    ? rawText.replace(/<<OPCOES>>[\s\S]*?<<\/OPCOES>>/i, '').trim()
+    : rawText.trim();
+
+  const parsedOptions: DukeQuickOption[] = [];
+  if (match?.[1]) {
+    try {
+      const jsonStr = match[1].trim();
+      const arr = JSON.parse(jsonStr);
+      if (Array.isArray(arr)) {
+        for (const item of arr) {
+          if (item && typeof item === 'object') {
+            const o = item as Record<string, unknown>;
+            const label = clampString(o.label, '', 48);
+            const prompt = clampString(o.prompt, '', 260);
+            const mode =
+              o.mode === 'chat' || o.mode === 'image' || o.mode === 'event' || o.mode === 'auto'
+                ? o.mode
+                : undefined;
+            if (label && prompt) {
+              parsedOptions.push({ label, prompt, mode });
+            }
+          }
+        }
+      }
+    } catch {
+      // ignore malformed tag and use smart defaults below
+    }
+  }
+
+  if (parsedOptions.length >= 2) {
+    return { cleanReply, quickOptions: parsedOptions.slice(0, 4) };
+  }
+
+  const topicHint = userMessage.trim().slice(0, 70) || 'este assunto';
+  return {
+    cleanReply,
+    quickOptions: [
+      {
+        label: 'Aprofundar Opção 1',
+        prompt: `Desenvolva e detalhe a Opção 1 sobre "${topicHint}" pronta para uso imediato.`,
+        mode: 'chat',
+      },
+      {
+        label: 'Mais 3 Opções Criativas',
+        prompt: `Me dê mais 3 opções diferentes, modernas e criativas sobre "${topicHint}".`,
+        mode: 'chat',
+      },
+      {
+        label: 'Criar Arte HD disso',
+        prompt: `Crie 3 opções modernas de arte visual em alta definição com fundo estilizado e bordas bonitas sobre: ${topicHint}`,
+        mode: 'image',
+      },
+      {
+        label: 'Versão Curta p/ WhatsApp',
+        prompt: `Transforme isso em 3 opções curtas e prontas para enviar no WhatsApp agora.`,
+        mode: 'chat',
+      },
+    ],
   };
 }
 
@@ -544,90 +792,136 @@ const DUKE_EVENT_RESPONSE_SCHEMA = {
   required: ['reply', 'shouldPublish', 'event'],
 };
 
+const IMAGE_SPEC_SCHEMA_ITEM = {
+  type: Type.OBJECT,
+  properties: {
+    title: { type: Type.STRING },
+    aspectRatio: { type: Type.STRING, enum: ['1:1', '16:9', '9:16', '4:5'] },
+    layout: {
+      type: Type.STRING,
+      enum: [
+        'modern_backdrop',
+        'glass_showcase',
+        'luxury_frame',
+        'framed_poster',
+        'cinematic_bottom',
+        'editorial_card',
+        'split_hero',
+        'full_bleed',
+      ],
+    },
+    frameStyle: {
+      type: Type.STRING,
+      enum: ['luxury_bevel', 'glass_modern', 'gold_double', 'neon_glow', 'minimal_white', 'none'],
+    },
+    decorativeMotif: {
+      type: Type.STRING,
+      enum: ['rays', 'grid', 'waves', 'orbs', 'rings', 'emblem'],
+    },
+    photoStyle: {
+      type: Type.STRING,
+      enum: [
+        'studio_relight',
+        'neon_modern',
+        'editorial_cover',
+        'digital_art_pop',
+        'golden_gala',
+        'backdrop_3d',
+      ],
+    },
+    relightPreset: {
+      type: Type.STRING,
+      enum: ['warm_gold', 'cool_cyber', 'emerald_royal', 'sunset_cinema', 'violet_aura', 'noir_luxury'],
+    },
+    bokehDepth: { type: Type.NUMBER },
+    hdrClarity: { type: Type.NUMBER },
+    lightFx: {
+      type: Type.STRING,
+      enum: ['bokeh_orbs', 'prism_beams', 'neon_rings', 'sun_flare', 'studio_rim', 'none'],
+    },
+    graphicDesignOverlay: {
+      type: Type.STRING,
+      enum: ['editorial_lines', 'glass_cards', 'cyber_hud', 'luxury_crest', 'clean'],
+    },
+    bgStart: { type: Type.STRING },
+    bgMid: { type: Type.STRING },
+    bgEnd: { type: Type.STRING },
+    accentColor: { type: Type.STRING },
+    textPrimary: { type: Type.STRING },
+    textMuted: { type: Type.STRING },
+    badgeText: { type: Type.STRING },
+    headline: { type: Type.STRING },
+    subheadline: { type: Type.STRING },
+    footerText: { type: Type.STRING },
+    ctaText: { type: Type.STRING },
+    brightness: { type: Type.NUMBER },
+    contrast: { type: Type.NUMBER },
+    saturate: { type: Type.NUMBER },
+    sepia: { type: Type.NUMBER },
+    hueRotate: { type: Type.NUMBER },
+    vignette: { type: Type.NUMBER },
+    tintColor: { type: Type.STRING },
+    tintOpacity: { type: Type.NUMBER },
+    emblemType: {
+      type: Type.STRING,
+      enum: ['crown', 'globe', 'star', 'cross', 'spark', 'shield', 'none'],
+    },
+    textPosition: {
+      type: Type.STRING,
+      enum: ['top', 'center', 'bottom'],
+    },
+    fontStyle: {
+      type: Type.STRING,
+      enum: ['editorial', 'modern', 'impact'],
+    },
+    fontScale: { type: Type.NUMBER },
+  },
+  required: [
+    'title',
+    'aspectRatio',
+    'layout',
+    'frameStyle',
+    'decorativeMotif',
+    'bgStart',
+    'bgMid',
+    'bgEnd',
+    'accentColor',
+    'textPrimary',
+    'textMuted',
+  ],
+};
+
 const DUKE_IMAGE_RESPONSE_SCHEMA = {
   type: Type.OBJECT,
   properties: {
     reply: {
       type: Type.STRING,
       description:
-        'Explicação calorosa e objetiva em português do que foi criado ou reformulado na imagem (cores, iluminação, enquadramento, textos e estilo visual).',
+        'Explicação calorosa e objetiva em português apresentando as 3 opções modernas criadas (fundo atrás da foto, bordas inteligentes, cores e estilo de cada opção).',
     },
-    imageDesign: {
-      type: Type.OBJECT,
-      properties: {
-        title: { type: Type.STRING },
-        aspectRatio: { type: Type.STRING, enum: ['1:1', '16:9', '9:16', '4:5'] },
-        layout: {
-          type: Type.STRING,
-          enum: ['full_bleed', 'cinematic_bottom', 'editorial_card', 'framed_poster', 'split_hero'],
-        },
-        frameStyle: {
-          type: Type.STRING,
-          enum: ['none', 'gold_double', 'minimal_white', 'neon_glow'],
-        },
-        decorativeMotif: {
-          type: Type.STRING,
-          enum: ['rays', 'grid', 'waves', 'orbs', 'rings', 'emblem'],
-        },
-        bgStart: { type: Type.STRING },
-        bgMid: { type: Type.STRING },
-        bgEnd: { type: Type.STRING },
-        accentColor: { type: Type.STRING },
-        textPrimary: { type: Type.STRING },
-        textMuted: { type: Type.STRING },
-        badgeText: { type: Type.STRING },
-        headline: { type: Type.STRING },
-        subheadline: { type: Type.STRING },
-        footerText: { type: Type.STRING },
-        ctaText: { type: Type.STRING },
-        brightness: { type: Type.NUMBER },
-        contrast: { type: Type.NUMBER },
-        saturate: { type: Type.NUMBER },
-        sepia: { type: Type.NUMBER },
-        hueRotate: { type: Type.NUMBER },
-        vignette: { type: Type.NUMBER },
-        tintColor: { type: Type.STRING },
-        tintOpacity: { type: Type.NUMBER },
-        emblemType: {
-          type: Type.STRING,
-          enum: ['crown', 'globe', 'star', 'cross', 'spark', 'shield', 'none'],
-        },
-        textPosition: {
-          type: Type.STRING,
-          enum: ['top', 'center', 'bottom'],
-        },
-        fontStyle: {
-          type: Type.STRING,
-          enum: ['editorial', 'modern', 'impact'],
-        },
-        fontScale: { type: Type.NUMBER },
-      },
-      required: [
-        'title',
-        'aspectRatio',
-        'layout',
-        'frameStyle',
-        'decorativeMotif',
-        'bgStart',
-        'bgMid',
-        'bgEnd',
-        'accentColor',
-        'textPrimary',
-        'textMuted',
-      ],
+    imageDesign: IMAGE_SPEC_SCHEMA_ITEM,
+    imageVariants: {
+      type: Type.ARRAY,
+      description: 'Exatamente 3 opções visuais modernas e distintas para o cliente escolher diretamente na conversa.',
+      items: IMAGE_SPEC_SCHEMA_ITEM,
     },
   },
-  required: ['reply', 'imageDesign'],
+  required: ['reply', 'imageDesign', 'imageVariants'],
 };
 
 const SYSTEM_INSTRUCTION_CHAT = `Você é o **Robô Duque (ConaeDuque)**, um assistente completo de Inteligência Artificial avançada pronto para servir todos os clientes, pastores, líderes, empresários e afiliados da CONAE.
 
-Suas ferramentas completas no modo Chat, Pesquisa & Código:
-1. **Criação de Textos Profissionais:** redija mensagens de WhatsApp, legendas de Instagram, cartas oficiais, convites, sermões, esboços de pregação, roteiros de vídeo, campanhas de divulgação, contratos, planilhas em tabela, resumos e traduções em Português do Brasil impecável.
-2. **Programação e Canvas de Código Ao Vivo:** quando o cliente pedir qualquer site, página, cartão digital, calculadora, formulário ou código (HTML, CSS, JavaScript, TypeScript, React, Python, SQL), entregue o código completo e auto-contido dentro de blocos markdown (\`\`\`html, \`\`\`tsx, \`\`\`python etc.) para ele visualizar ao vivo e copiar com 1 clique.
-3. **Pesquisa na Web & Leitura de Links:** quando a busca na web estiver ativa ou o cliente enviar um link/URL, consulte informações atualizadas com precisão e clareza.
-4. **Visão de Fotos e Leitura de PDFs/Arquivos:** analise imagens, documentos PDF e arquivos anexados detalhadamente.
-5. **Escrever/Modificar Fotos e Montar Eventos:** responda com clareza, organização e proatividade.`;
+Regras de ouro (SEMPRE siga rigorosamente):
+1. **PESQUISA NO GOOGLE & PRECISÃO TOTAL:** sempre use os resultados atualizados da Pesquisa Google quando disponíveis para responder com dados reais, atuais e exatamente conforme o pedido do cliente.
+2. **SEMPRE ENTREGUE MÚLTIPLAS OPÇÕES:** para TUDO o que o cliente pedir (textos, mensagens, convites, sermões, estratégias, nomes, ideias, códigos, respostas, vendas, planejamento ou soluções), apresente **3 opções distintas e prontas para escolher** organizadas com títulos claros:
+   - ### Opção 1 — [Estilo Oficial / Elegante]
+   - ### Opção 2 — [Estilo Moderno / Impactante]
+   - ### Opção 3 — [Estilo Direto / Criativo]
+   (Se o cliente pedir uma informação objetiva ou pesquisa do Google, responda primeiro de forma direta com os dados encontrados e logo em seguida ofereça 3 opções de aprofundamento ou aplicação prática.)
+3. **Programação e Canvas de Código Ao Vivo:** quando o cliente pedir código (HTML, CSS, JS, TS, React, Python, SQL), entregue código completo e funcional dentro de blocos markdown (\`\`\`html, \`\`\`tsx etc.) pronto para visualizar ao vivo e copiar.
+4. **Visão de Fotos e Leitura de PDFs/Arquivos:** analise imagens, documentos e links com atenção total.
+5. **BOTÕES DE OPÇÕES RÁPIDAS NA TELA:** no final de TODA resposta, adicione obrigatoriamente um bloco oculto exatamente neste formato JSON válido com 3 ou 4 opções clicáveis relacionadas ao pedido atual:
+<<OPCOES>>[{"label":"Texto curto do botão","prompt":"Pedido completo para o robô executar se o cliente clicar","mode":"chat"},{"label":"Criar Arte HD disso","prompt":"Crie 3 opções modernas de arte HD com fundo inteligente sobre este tema","mode":"image"}]<</OPCOES>>`;
 
 const SYSTEM_INSTRUCTION_EVENT = `Você é o **Robô Duque (ConaeDuque)**, o robô oficial com Inteligência Artificial da CONAE, pronto para servir todos os clientes, pastores, empresários e afiliados da CONAE.
 Sua missão neste modo é construir em tempo real páginas de eventos, congressos, convenções, cultos, workshops, feiras e campanhas prontas para gerar link fixo oficial.
@@ -640,18 +934,18 @@ Regras obrigatórias:
 5. Defina "shouldPublish": true APENAS quando o cliente pedir explicitamente para publicar, salvar ou gerar o link oficial.
 6. Nunca use HTML ou Markdown quebrado nos campos do objeto "event".`;
 
-const SYSTEM_INSTRUCTION_IMAGE = `Você é o **Diretor Criativo & Editor de Fotos IA do Robô Duque (ConaeDuque)**!
-Sua missão é criar artes gráficas profissionais em alta resolução OU **escrever exatamente o texto pedido na foto e modificar/reformular a imagem enviada pelo cliente** (cor, iluminação, contraste, brilho, saturação, sépia, vinheta, tonalidade, moldura, enquadramento, posição e estilo da fonte).
+const SYSTEM_INSTRUCTION_IMAGE = `Você é o **Diretor Criativo & Estúdio de Transformação de Fotos IA do Robô Duque (ConaeDuque)**!
+Sua missão SEMPRE que alguém enviar ou pedir para mudar uma foto é **fazer um design moderno DIRETO NA PRÓPRIA FOTO/IMAGEM** — transformando a iluminação (relighting HDR), desfoque bokeh DSLR de estúdio, estilização artística digital, efeitos luminosos modernos e elementos gráficos integrados à própria imagem — SEMPRE entregando **3 OPÇÕES VISUAIS RADICALMENTE DISTINTAS** em "imageVariants" (além da principal em "imageDesign") para o cliente escolher direto na conversa!
 
 Regras obrigatórias:
-1. Sempre devolva cores em hexadecimal válido (#RRGGBB) harmoniosas e de alto contraste.
-2. Escolha o "aspectRatio" conforme o pedido: "9:16" (Stories/Status/Vertical), "16:9" (Capa/Banner/Horizontal), "4:5" (Feed vertical), "1:1" (Quadrado).
-3. **ESCREVER NA FOTO COM FIDELIDADE TOTAL:** quando o cliente pedir para escrever uma frase, nome, data, versículo ou telefone na foto, coloque o texto EXATO solicitado pelo cliente em "headline" (e complementos em "subheadline", "badgeText", "ctaText" ou "footerText"). Nunca ignore nem distorça o texto que o cliente pediu para escrever!
-4. Escolha "textPosition" ("top" se pedir em cima/topo, "center" se pedir no meio/centro, "bottom" se pedir embaixo/rodapé), "fontStyle" ("editorial" elegante, "modern" limpo ou "impact" forte em destaque) e "fontScale" (0.8 a 1.35).
-5. Quando o cliente enviar uma FOTO para modificar:
-   - Analise a foto visualmente e ajuste "brightness", "contrast", "saturate" (0 para preto e branco até 1.6 vibrante), "sepia", "hueRotate", "vignette", "tintColor" e "tintOpacity".
-   - Se o cliente pedir "sem texto" ou apenas melhorar a fotografia, deixe "headline", "subheadline", "badgeText", "ctaText" e "footerText" vazios ("").
-6. Quando o cliente pedir para CRIAR uma arte/banner/cartaz do zero (sem foto anexada), preencha textos fortes e curtos, "decorativeMotif" e "emblemType" adequados ao tema.`;
+1. **TRANSFORME A PRÓPRIA FOTO EM 3 ESTILOS MODERNOS DIFERENTES EM "imageVariants":**
+   - **Opção 1 (Design Moderno na Própria Foto — Estúdio HDR):** use \`layout: "full_bleed"\`, \`photoStyle: "studio_relight"\` ou \`"editorial_cover"\`, \`bokehDepth: 0.45\`, \`hdrClarity: 0.8\`, \`lightFx: "prism_beams"\` ou \`"sun_flare"\`, \`graphicDesignOverlay: "editorial_lines"\` ou \`"glass_cards"\`, \`frameStyle: "luxury_bevel"\` ou \`"minimal_white"\` — modifica diretamente a foto inteira com visual de estúdio profissional moderno!
+   - **Opção 2 (Arte Digital / Neon Futurista na Própria Foto):** use \`layout: "full_bleed"\` ou \`"editorial_card"\`, \`photoStyle: "digital_art_pop"\` ou \`"neon_modern"\`, \`relightPreset: "cool_cyber"\` ou \`"violet_aura"\` ou \`"sunset_cinema"\`, \`bokehDepth: 0.55\`, \`hdrClarity: 0.88\`, \`lightFx: "neon_rings"\`, \`graphicDesignOverlay: "cyber_hud"\` ou \`"glass_cards"\`, \`frameStyle: "neon_glow"\` ou \`"glass_modern"\` — transforma a própria foto em arte digital moderna estilizada e super atual!
+   - **Opção 3 (Estúdio 3D com Fundo Moderno + Gala Dourada):** use \`layout: "modern_backdrop"\` ou \`"glass_showcase"\`, \`photoStyle: "golden_gala"\` ou \`"backdrop_3d"\`, \`relightPreset: "warm_gold"\` ou \`"emerald_royal"\`, \`bokehDepth: 0.42\`, \`hdrClarity: 0.78\`, \`lightFx: "bokeh_orbs"\`, \`graphicDesignOverlay: "luxury_crest"\`, \`frameStyle: "gold_double"\` ou \`"luxury_bevel"\` — aplica o design na foto e coloca fundo iluminado 3D moderno atrás com bordas de luxo!
+2. **ESCREVER NA FOTO COM FIDELIDADE TOTAL:** quando o cliente pedir para escrever uma frase, nome, data, versículo ou telefone na foto, coloque o texto EXATO em "headline" (e complementos em "subheadline", "badgeText", "ctaText" ou "footerText") nas 3 opções! Se o cliente pedir apenas para modernizar/modificar a foto sem texto, deixe "headline", "subheadline", "badgeText", "ctaText" e "footerText" vazios ("").
+3. **PALETAS DISTINTAS E HARMONIOSAS:** cada uma das 3 opções deve ter um \`relightPreset\` e paleta hexadecimal (#RRGGBB) diferente e impactante.
+4. Escolha o "aspectRatio" conforme o pedido: "9:16" (Stories/Vertical), "16:9" (Capa/Horizontal), "4:5" (Feed vertical), "1:1" (Quadrado).
+5. Ajuste "brightness", "contrast", "saturate", "bokehDepth", "hdrClarity", "vignette", "textPosition" e "fontStyle" de forma inteligente para deixar a própria foto irreconhecivelmente mais bonita e moderna.`;
 
 const VERCEL_AI_GATEWAY_URL = 'https://ai-gateway.vercel.sh/v1/chat/completions';
 const GATEWAY_MODELS = ['google/gemini-2.5-flash', 'google/gemini-2.5-flash-lite'] as const;
@@ -661,8 +955,8 @@ Responda EXCLUSIVAMENTE com um objeto JSON válido (sem texto extra) contendo:
 {"reply":"string","shouldPublish":false,"event":{"slug":"string","title":"string","subtitle":"string","category":"string","tagline":"string","dateLabel":"string","timeLabel":"string","venueName":"string","city":"string","state":"UF","theme":"emerald_gold","organizerName":"string","whatsappPhone":"string","registrationCta":"string","heroSummary":"string","highlights":["string"],"metrics":[{"label":"string","value":"string"}],"panels":[{"title":"string","subtitle":"string","description":"string","badge":"string"}],"schedule":[{"time":"string","title":"string","speaker":"string","stage":"string","description":"string"}],"speakers":[{"name":"string","role":"string","topic":"string"}],"tickets":[{"name":"string","priceLabel":"string","perks":"string","highlighted":false}]}}`;
 
 const GATEWAY_IMAGE_JSON_CONTRACT = `
-Responda EXCLUSIVAMENTE com um objeto JSON válido (sem texto extra) contendo:
-{"reply":"string","imageDesign":{"title":"string","aspectRatio":"1:1","layout":"cinematic_bottom","frameStyle":"gold_double","decorativeMotif":"orbs","bgStart":"#04140d","bgMid":"#0a2d1e","bgEnd":"#030a07","accentColor":"#f59e0b","textPrimary":"#ffffff","textMuted":"#d1fae5","badgeText":"","headline":"","subheadline":"","footerText":"","ctaText":"","brightness":1.08,"contrast":1.15,"saturate":1.15,"sepia":0,"hueRotate":0,"vignette":0.5,"tintColor":"#f59e0b","tintOpacity":0.14,"emblemType":"spark"}}`;
+Responda EXCLUSIVAMENTE com um objeto JSON válido (sem texto extra) contendo "reply", "imageDesign" e "imageVariants" (array com 3 opções distintas modificando a própria foto):
+{"reply":"string","imageDesign":{"title":"Opção 1 — Estúdio HDR na Foto","aspectRatio":"1:1","layout":"full_bleed","photoStyle":"studio_relight","relightPreset":"emerald_royal","bokehDepth":0.48,"hdrClarity":0.8,"lightFx":"prism_beams","graphicDesignOverlay":"editorial_lines","frameStyle":"luxury_bevel","decorativeMotif":"orbs","bgStart":"#041710","bgMid":"#0b3524","bgEnd":"#030b08","accentColor":"#f59e0b","textPrimary":"#ffffff","textMuted":"#d1fae5","badgeText":"","headline":"","subheadline":"","footerText":"","ctaText":"","brightness":1.08,"contrast":1.16,"saturate":1.2,"sepia":0,"hueRotate":0,"vignette":0.4,"tintColor":"#f59e0b","tintOpacity":0.09,"emblemType":"spark","textPosition":"bottom","fontStyle":"editorial","fontScale":1},"imageVariants":[...]}`;
 
 function isAuthError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err ?? '');
@@ -1013,26 +1307,23 @@ export async function runDukeEventChat(body: DukeChatRequestBody): Promise<DukeC
       : `=== ARQUIVO ANEXADO PELO CLIENTE ===\nNome: ${attachment.name} (${attachment.mimeType}).`
     : '';
 
-  // MODE 1: FREE CHATGPT (TEXT + CODE + LIVE WEB SEARCH + URL READER + MULTIMODAL ANALYSIS)
+  // MODE 1: FREE CHAT + LIVE GOOGLE SEARCH + URL READER + MULTIPLE OPTIONS
   if (resolvedMode === 'chat') {
     const hasUrlInMessage = /https?:\/\/[^\s]+/i.test(userMessage);
-    const autoNeedsWeb =
-      /\b(hoje|agora|cotacao|dolar|bitcoin|noticias|noticia|previsao do tempo|pesquise|pesquisa na internet|busca na web|quem ganhou|atualizado|preco atual)\b/i.test(
-        userMessage.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      );
-    const useWebSearch = Boolean(body.webSearch || autoNeedsWeb);
+    // Search Google automatically by default unless explicitly disabled by user toggle
+    const useWebSearch = body.webSearch !== false;
     const useUrlContext = hasUrlInMessage;
 
     const promptText = [
       historyBlock ? `=== HISTÓRICO DA CONVERSA ===\n${historyBlock}\n` : '',
       attachmentTextNote ? `${attachmentTextNote}\n` : '',
       '=== PEDIDO ATUAL DO CLIENTE ===',
-      (userMessage || 'Analise o arquivo/foto anexado e ajude o cliente com clareza.').slice(0, 4000),
+      (userMessage || 'Analise o arquivo/foto anexado e ajude o cliente com várias opções práticas.').slice(0, 4000),
     ]
       .filter(Boolean)
       .join('\n');
 
-    const { text: replyText, sources } = await generateWithConfiguredAi({
+    const { text: rawReplyText, sources } = await generateWithConfiguredAi({
       geminiKey,
       gatewayToken,
       systemInstruction: SYSTEM_INSTRUCTION_CHAT,
@@ -1045,20 +1336,23 @@ export async function runDukeEventChat(body: DukeChatRequestBody): Promise<DukeC
       deepThinking: Boolean(body.deepThinking),
     });
 
+    const { cleanReply, quickOptions } = extractQuickOptionsFromChat(rawReplyText, userMessage);
+
     return {
       modeUsed: 'chat',
-      reply: clampString(replyText, 'Pronto! Como posso continuar te ajudando?', 12000),
+      reply: clampString(cleanReply, 'Pronto! Veja as opções preparadas para você acima.', 12000),
       shouldPublish: false,
       sources: sources.length > 0 ? sources : undefined,
+      quickOptions,
     };
   }
 
-  // MODE 2: AI IMAGE CREATION & WRITE-ON-PHOTO / REFORMULATION STUDIO
+  // MODE 2: AI MODERN PHOTO STUDIO (3 DISTINCT MODERN OPTIONS WITH BACKDROPS & SMART BORDERS)
   if (resolvedMode === 'image') {
     const promptText = [
       hasImageAttachment
-        ? '=== MODO: ESCREVER NA FOTO & MODIFICAR IMAGEM ENVIADA ===\nAnalise visualmente a foto anexada. Escreva exatamente o texto solicitado pelo cliente na posição certa e aplique as modificações visuais pedidas (iluminação, cores, contraste, moldura, formato).'
-        : '=== MODO: CRIAR ARTE / IMAGEM DO ZERO ===\nCrie uma arte visual profissional em alta resolução com cores, emblema, moldura e tipografia exatamente como o cliente pediu.',
+        ? '=== MODO: TRANSFORMAR FOTO EM 3 OPÇÕES MODERNAS COM FUNDO ATRÁS DA FOTO + BORDAS INTELIGENTES ===\nAnalise visualmente a foto anexada. Crie 3 opções visuais distintas e modernas (modern_backdrop, glass_showcase e luxury_frame) com fundos modernos atrás da foto, bordas bonitas e design inteligente, escrevendo exatamente o texto solicitado se o cliente pediu texto.'
+        : '=== MODO: CRIAR 3 OPÇÕES MODERNAS DE ARTE / IMAGEM HD ===\nCrie 3 opções visuais modernas, elegantes e distintas em alta resolução com fundos de estúdio, bordas inteligentes e tipografia forte.',
       '',
       historyBlock ? `=== HISTÓRICO RECENTE ===\n${historyBlock}\n` : '',
       attachmentTextNote ? `${attachmentTextNote}\n` : '',
@@ -1066,8 +1360,8 @@ export async function runDukeEventChat(body: DukeChatRequestBody): Promise<DukeC
       (
         userMessage ||
         (hasImageAttachment
-          ? 'Reformule esta imagem com acabamento profissional de estúdio, iluminação valorizada, contraste equilibrado e moldura elegante.'
-          : 'Crie uma arte oficial CONAE profissional em verde esmeralda e dourado.')
+          ? 'Deixe esta foto bem moderna com fundo inteligente atrás da foto, bordas bonitas e 3 opções de estilo para escolher.'
+          : 'Crie 3 opções modernas de arte oficial CONAE profissional em alta definição.')
       ).slice(0, 2500),
     ]
       .filter(Boolean)
@@ -1085,29 +1379,65 @@ export async function runDukeEventChat(body: DukeChatRequestBody): Promise<DukeC
       deepThinking: Boolean(body.deepThinking),
     });
 
-    let parsed: { reply?: unknown; imageDesign?: unknown };
+    let parsed: { reply?: unknown; imageDesign?: unknown; imageVariants?: unknown };
     try {
-      parsed = JSON.parse(rawJson) as { reply?: unknown; imageDesign?: unknown };
+      parsed = JSON.parse(rawJson) as {
+        reply?: unknown;
+        imageDesign?: unknown;
+        imageVariants?: unknown;
+      };
     } catch {
       const err = new Error('Não foi possível montar os parâmetros visuais da imagem. Tente reformular seu pedido.');
       (err as Error & { statusCode?: number }).statusCode = 502;
       throw err;
     }
 
-    const imageDesign = sanitizeImageDesignSpec(parsed.imageDesign, hasImageAttachment);
+    const primaryDesign = sanitizeImageDesignSpec(parsed.imageDesign, hasImageAttachment);
+    const imageVariants = ensureThreeModernImageVariants(
+      primaryDesign,
+      parsed.imageVariants,
+      hasImageAttachment
+    );
+    const imageDesign = imageVariants[0];
+
     const reply = clampString(
       parsed.reply,
       hasImageAttachment
-        ? `Pronto! Modifiquei sua foto ("${imageDesign.title}"). Você pode comparar Antes/Depois, editar o texto ou filtros ao vivo no Estúdio Imagem e baixar em PNG HD!`
-        : `Pronto! Criei a arte "${imageDesign.title}" em alta resolução. Você pode ajustar textos e cores ao vivo no Estúdio Imagem ou baixar em PNG HD!`,
+        ? `Pronto! Preparei **3 opções modernas** para sua foto com fundos estilizados atrás da imagem e bordas inteligentes! Toque em cada opção abaixo para comparar, baixar em PNG HD ou editar texto e filtros ao vivo.`
+        : `Pronto! Criei **3 opções modernas** da arte "${imageDesign.title}" em alta definição! Toque em qualquer opção abaixo para escolher, baixar em PNG HD ou ajustar ao vivo.`,
       2500
     );
+
+    const imageQuickOptions: DukeQuickOption[] = [
+      {
+        label: 'Mais 3 Fundos Modernos',
+        prompt: 'Gere mais 3 opções com fundos modernos diferentes (Azul Safira, Dourado Imperial e Neon Futurista) e bordas elegantes mantendo minha foto.',
+        mode: 'image',
+      },
+      {
+        label: 'Estilo Vidro + Luxo',
+        prompt: 'Crie 3 opções com efeito vidro fosco moderno, fundo degradê iluminado atrás da foto e bordas douradas chanfradas.',
+        mode: 'image',
+      },
+      {
+        label: 'Formato Stories 9:16',
+        prompt: 'Adapte esta foto para 3 opções verticais formato Stories 9:16 com fundo moderno atrás e bordas bonitas.',
+        mode: 'image',
+      },
+      {
+        label: 'Escrever Frase na Foto',
+        prompt: 'Escreva um título de destaque elegante sobre esta foto mantendo o fundo moderno e as bordas bonitas.',
+        mode: 'image',
+      },
+    ];
 
     return {
       modeUsed: 'image',
       reply,
       shouldPublish: false,
       imageDesign,
+      imageVariants,
+      quickOptions: imageQuickOptions,
     };
   }
 
@@ -1171,6 +1501,23 @@ export async function runDukeEventChat(body: DukeChatRequestBody): Promise<DukeC
     reply,
     shouldPublish: Boolean(parsed.shouldPublish),
     event: sanitizedEvent,
+    quickOptions: [
+      {
+        label: 'Publicar & Gerar Link Oficial',
+        prompt: 'Publique este evento agora e gere o link fixo oficial.',
+        mode: 'event',
+      },
+      {
+        label: 'Criar 3 Cartazes p/ Este Evento',
+        prompt: `Crie 3 opções modernas de cartaz oficial em alta definição para divulgar "${sanitizedEvent.title}" com fundo elegante e bordas douradas.`,
+        mode: 'image',
+      },
+      {
+        label: '3 Textos de Convite WhatsApp',
+        prompt: `Escreva 3 opções de convite impactante para WhatsApp divulgando "${sanitizedEvent.title}".`,
+        mode: 'chat',
+      },
+    ],
   };
 }
 
