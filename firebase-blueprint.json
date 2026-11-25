@@ -1,0 +1,704 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private affiliate, staff, and investor profile with CONAE login credentials and patrimony balances.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "displayName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "email": { "type": "string", "format": "email", "maxLength": 150 },
+        "phone": { "type": "string", "maxLength": 30 },
+        "state": { "type": "string", "minLength": 2, "maxLength": 4 },
+        "cpf": { "type": "string", "maxLength": 20 },
+        "loginUsername": { "type": "string", "minLength": 3, "maxLength": 50 },
+        "loginSecretHash": { "type": "string", "maxLength": 128 },
+        "photoUrl": { "type": "string", "maxLength": 60000 },
+        "role": { "type": "string", "enum": ["affiliate", "staff", "executive", "president"] },
+        "vipTier": { "type": "string", "enum": ["Padrao", "Prata", "Ouro", "Diamante"] },
+        "balanceBRL": { "type": "number" },
+        "balanceUSD": { "type": "number" },
+        "cnecTokens": { "type": "number" },
+        "monthlyPlanActive": { "type": "boolean" },
+        "virtualCardActive": { "type": "boolean" },
+        "executiveCardActive": { "type": "boolean" },
+        "sharesOwned": { "type": "number" },
+        "sharesNotaryCode": { "type": "string", "maxLength": 80 },
+        "cardNumber": { "type": "string", "maxLength": 32 },
+        "bankToken": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid",
+        "displayName",
+        "email",
+        "state",
+        "role",
+        "vipTier",
+        "balanceBRL",
+        "balanceUSD",
+        "cnecTokens",
+        "monthlyPlanActive",
+        "virtualCardActive",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PublicAffiliate": {
+      "title": "PublicAffiliate",
+      "description": "Publicly visible non-PII affiliate showcase card.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "displayName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "state": { "type": "string", "minLength": 2, "maxLength": 4 },
+        "photoUrl": { "type": "string", "maxLength": 60000 },
+        "vipTier": { "type": "string", "enum": ["Padrao", "Prata", "Ouro", "Diamante"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "state", "vipTier", "createdAt", "updatedAt"]
+    },
+    "AdminMember": {
+      "title": "AdminMember",
+      "description": "Executive board and presidency authorization record.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "format": "email", "maxLength": 150 },
+        "roleTitle": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "roleTitle", "createdAt"]
+    },
+    "ExecutivePix": {
+      "title": "ExecutivePix",
+      "description": "Registered PIX keys for President and Executive Board members to receive package orders.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "executiveName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "executiveRole": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "bankName": { "type": "string", "minLength": 2, "maxLength": 60 },
+        "pixKey": { "type": "string", "minLength": 3, "maxLength": 140 },
+        "pixType": { "type": "string", "enum": ["CNPJ", "CPF", "Email", "Telefone", "Aleatoria"] },
+        "city": { "type": "string", "minLength": 2, "maxLength": 60 },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "executiveName", "executiveRole", "bankName", "pixKey", "pixType", "city", "active", "createdAt", "updatedAt"]
+    },
+    "PackageOrder": {
+      "title": "PackageOrder",
+      "description": "Affiliate investment package or quota purchase request pending Executive/President confirmation.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "packageId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "packageName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "amountBRL": { "type": "number" },
+        "cnecAmount": { "type": "number" },
+        "paymentMethod": { "type": "string", "enum": ["PIX_INTER", "PIX_MULTI", "CONTA_GLOBAL_USD", "DERIV_P2P"] },
+        "executivePixId": { "type": "string", "maxLength": 128 },
+        "executiveName": { "type": "string", "maxLength": 100 },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "notes": { "type": "string", "maxLength": 300 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "userName", "packageId", "packageName", "amountBRL", "cnecAmount", "paymentMethod", "status", "createdAt", "updatedAt"]
+    },
+    "UsdInvestment": {
+      "title": "UsdInvestment",
+      "description": "Deriv P2P and Inter Conta Global USD investment deposit quoted in BRL.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "amountUSD": { "type": "number" },
+        "quoteBRL": { "type": "number" },
+        "amountBRL": { "type": "number" },
+        "platform": { "type": "string", "enum": ["DERIV_P2P", "INTER_GLOBAL", "CDB_INTER"] },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "userName", "amountUSD", "quoteBRL", "amountBRL", "platform", "status", "createdAt", "updatedAt"]
+    },
+    "CourseEnrollment": {
+      "title": "CourseEnrollment",
+      "description": "Enrollment record for CONAE Cursos (Capelania, Juiz de Paz, Teologia).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "courseId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "courseTitle": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "modality": { "type": "string", "enum": ["Presencial", "Online EAD", "Hibrido"] },
+        "status": { "type": "string", "enum": ["pending", "active", "certified"] },
+        "credentialCode": { "type": "string", "maxLength": 40 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "userName", "courseId", "courseTitle", "modality", "status", "createdAt", "updatedAt"]
+    },
+    "HotelBooking": {
+      "title": "HotelBooking",
+      "description": "VIP reservation request at CONAE partner hotels and clubs across Brazilian states.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "hotelId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "hotelName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "state": { "type": "string", "minLength": 2, "maxLength": 4 },
+        "stars": { "type": "number" },
+        "checkInDate": { "type": "string", "maxLength": 20 },
+        "guests": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "cancelled"] },
+        "bookingToken": { "type": "string", "minLength": 4, "maxLength": 64 },
+        "bookingChannel": { "type": "string", "enum": ["CONAE_BOOKING_TOKEN", "HOTEL_DIRECT"] },
+        "bookingUrl": { "type": "string", "maxLength": 400 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "userName", "hotelId", "hotelName", "state", "stars", "checkInDate", "guests", "status", "createdAt", "updatedAt"]
+    },
+    "PartnerHotel": {
+      "title": "PartnerHotel",
+      "description": "Partner hotel or event club registered in the CONAE national network with photo gallery, GPS coordinates, and hotel card benefits.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "city": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "state": { "type": "string", "minLength": 2, "maxLength": 4 },
+        "category": { "type": "string", "enum": ["Hotel", "Clube de Eventos", "Resort Conveniado"] },
+        "stars": { "type": "number" },
+        "discountPercent": { "type": "number" },
+        "description": { "type": "string", "maxLength": 400 },
+        "photoUrl": { "type": "string", "maxLength": 60000 },
+        "galleryPhotos": { "type": "array" },
+        "hotelBenefits": { "type": "string", "maxLength": 300 },
+        "placeId": { "type": "string", "maxLength": 200 },
+        "mapAddress": { "type": "string", "maxLength": 240 },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "city", "state", "category", "stars", "discountPercent", "description", "active", "createdAt", "updatedAt"]
+    },
+    "CourseItem": {
+      "title": "CourseItem",
+      "description": "Course published in the CONAE Cursos catalog.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "category": { "type": "string", "minLength": 2, "maxLength": 60 },
+        "duration": { "type": "string", "maxLength": 40 },
+        "modality": { "type": "string", "enum": ["Presencial", "Online EAD", "Hibrido"] },
+        "feeLabel": { "type": "string", "maxLength": 100 },
+        "schedule": { "type": "string", "maxLength": 120 },
+        "location": { "type": "string", "maxLength": 160 },
+        "description": { "type": "string", "maxLength": 400 },
+        "photoUrl": { "type": "string", "maxLength": 60000 },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "category", "duration", "modality", "feeLabel", "description", "active", "createdAt", "updatedAt"]
+    },
+    "SponsorItem": {
+      "title": "SponsorItem",
+      "description": "Official sponsor of CONAE Convenção Mundial with uploaded photo and benefit.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "segment": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "benefit": { "type": "string", "minLength": 2, "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 400 },
+        "photoUrl": { "type": "string", "maxLength": 60000 },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "segment", "benefit", "description", "active", "createdAt", "updatedAt"]
+    },
+    "BenefitPartner": {
+      "title": "BenefitPartner",
+      "description": "Pharmacy, supermarket, clinic/laboratory, commerce, or club offering exclusive discounts to affiliates and hoteliers.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "category": { "type": "string", "enum": ["Farmácia", "Supermercado", "Clínica & Laboratório", "Comércio", "Clube Conveniado"] },
+        "city": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "state": { "type": "string", "minLength": 2, "maxLength": 4 },
+        "discountPercent": { "type": "number" },
+        "description": { "type": "string", "maxLength": 400 },
+        "photoUrl": { "type": "string", "maxLength": 60000 },
+        "hotelExclusive": { "type": "boolean" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "category", "city", "state", "discountPercent", "description", "hotelExclusive", "active", "createdAt", "updatedAt"]
+    },
+    "CredentialPass": {
+      "title": "CredentialPass",
+      "description": "President-issued platform password, executive VIP pass, and golden credential card metadata.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "targetUid": { "type": "string", "maxLength": 128 },
+        "holderName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "holderEmail": { "type": "string", "maxLength": 150 },
+        "passType": { "type": "string", "enum": ["Afiliado", "Executivo VIP", "Hoteleiro"] },
+        "issuedPasswordHash": { "type": "string", "minLength": 64, "maxLength": 64 },
+        "issuedPasswordPlain": { "type": "string", "minLength": 4, "maxLength": 64 },
+        "hotelName": { "type": "string", "maxLength": 120 },
+        "goldenCardActive": { "type": "boolean" },
+        "monthlyPaid": { "type": "boolean" },
+        "notes": { "type": "string", "maxLength": 240 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "holderName", "passType", "issuedPasswordHash", "issuedPasswordPlain", "goldenCardActive", "monthlyPaid", "createdAt", "updatedAt"]
+    },
+    "VipExecutiveHash": {
+      "title": "VipExecutiveHash",
+      "description": "Non-PII SHA-256 hash of individual executive VIP Room pass for verification without exposing plaintext.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "executiveName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "passwordHash": { "type": "string", "minLength": 64, "maxLength": 64 },
+        "active": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "executiveName", "passwordHash", "active", "updatedAt"]
+    },
+    "VipRoomPublic": {
+      "title": "VipRoomPublic",
+      "description": "Public-safe SHA-256 hash of the monthly VIP Investment Room password and shareholder signal.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "monthLabel": { "type": "string", "minLength": 2, "maxLength": 40 },
+        "passwordHash": { "type": "string", "minLength": 64, "maxLength": 64 },
+        "buySignalTitle": { "type": "string", "maxLength": 140 },
+        "buySignalAsset": { "type": "string", "maxLength": 40 },
+        "buySignalTargetBRL": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "monthLabel", "passwordHash", "buySignalTitle", "buySignalAsset", "buySignalTargetBRL", "updatedAt"]
+    },
+    "VipRoomSecret": {
+      "title": "VipRoomSecret",
+      "description": "Executive-only plaintext monthly password record for administration.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "monthLabel": { "type": "string", "minLength": 2, "maxLength": 40 },
+        "plainPassword": { "type": "string", "minLength": 4, "maxLength": 64 },
+        "updatedBy": { "type": "string", "maxLength": 100 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "monthLabel", "plainPassword", "updatedBy", "updatedAt"]
+    },
+    "ShareholderOrder": {
+      "title": "ShareholderOrder",
+      "description": "Mathematical share lot request out of 100,000 total CONAE shares, routed through President/Executive review and Notary (Cartório) registration.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "userPhone": { "type": "string", "maxLength": 30 },
+        "userDocument": { "type": "string", "maxLength": 30 },
+        "divisionLabel": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "lotCount": { "type": "number" },
+        "sharesPerLot": { "type": "number" },
+        "totalShares": { "type": "number" },
+        "percentOwnership": { "type": "number" },
+        "estimatedValueBRL": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "documentacao", "cartorio", "approved", "rejected"] },
+        "notaryCode": { "type": "string", "maxLength": 80 },
+        "presidentNotes": { "type": "string", "maxLength": 300 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "userId",
+        "userName",
+        "divisionLabel",
+        "lotCount",
+        "sharesPerLot",
+        "totalShares",
+        "percentOwnership",
+        "estimatedValueBRL",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ShareholderSummary": {
+      "title": "ShareholderSummary",
+      "description": "Public non-PII summary of 100,000 CONAE shares distributed and under notary review.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "totalCapitalShares": { "type": "number" },
+        "allocatedShares": { "type": "number" },
+        "inProcessShares": { "type": "number" },
+        "activeShareholdersCount": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "totalCapitalShares",
+        "allocatedShares",
+        "inProcessShares",
+        "activeShareholdersCount",
+        "updatedAt"
+      ]
+    },
+    "BookingPublicConfig": {
+      "title": "BookingPublicConfig",
+      "description": "Public-safe Booking.com Partner AID and active CONAE lodging convention token configuration.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "connected": { "type": "boolean" },
+        "partnerAid": { "type": "string", "minLength": 2, "maxLength": 32 },
+        "tokenPrefix": { "type": "string", "minLength": 2, "maxLength": 24 },
+        "activeBookingToken": { "type": "string", "minLength": 4, "maxLength": 64 },
+        "bookingDomain": { "type": "string", "minLength": 4, "maxLength": 80 },
+        "defaultDiscountPercent": { "type": "number" },
+        "updatedBy": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "connected", "partnerAid", "tokenPrefix", "activeBookingToken", "bookingDomain", "defaultDiscountPercent", "updatedBy", "updatedAt"]
+    },
+    "BookingSecretConfig": {
+      "title": "BookingSecretConfig",
+      "description": "Admin-only Booking.com API / Partner secret token configuration.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "bookingApiToken": { "type": "string", "minLength": 4, "maxLength": 200 },
+        "partnerAid": { "type": "string", "minLength": 2, "maxLength": 32 },
+        "tokenMasked": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "updatedBy": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "bookingApiToken", "partnerAid", "tokenMasked", "updatedBy", "updatedAt"]
+    },
+    "ShareholderTreeNode": {
+      "title": "ShareholderTreeNode",
+      "description": "Branching shareholder hierarchy node linked to Master President Apóstolo Hélio César or Executive Board, with portrait photo, ownership percentage, granted execution powers, hotel/course credentials, and institutional treasury title probability.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "fullName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "branchTitle": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "state": { "type": "string", "minLength": 2, "maxLength": 4 },
+        "photoUrl": { "type": "string", "maxLength": 60000 },
+        "parentNodeId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "sharesCount": { "type": "number" },
+        "sharePercent": { "type": "number" },
+        "executionPowers": { "type": "string", "minLength": 2, "maxLength": 260 },
+        "hotelDiscountAccess": { "type": "boolean" },
+        "coursesAccess": { "type": "boolean" },
+        "treasuryTitlesEligible": { "type": "boolean" },
+        "treasuryProbabilityPercent": { "type": "number" },
+        "treasuryProbabilityTier": { "type": "string", "enum": ["Padrao", "Alta", "Maxima"] },
+        "notaryCode": { "type": "string", "maxLength": 80 },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "fullName",
+        "branchTitle",
+        "state",
+        "parentNodeId",
+        "sharesCount",
+        "sharePercent",
+        "executionPowers",
+        "hotelDiscountAccess",
+        "coursesAccess",
+        "treasuryTitlesEligible",
+        "treasuryProbabilityPercent",
+        "treasuryProbabilityTier",
+        "active",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "TreasuryEntry": {
+      "title": "TreasuryEntry",
+      "description": "Executive-recorded institutional equity (patrimônio), CNEC share sale with buyer photo, shares for sale, and daily quote distribution counted in real time on the stock market and 27-state percentage panel.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "entryType": { "type": "string", "enum": ["patrimonio", "venda_acoes", "cotacao_dia"] },
+        "title": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "buyerName": { "type": "string", "maxLength": 100 },
+        "buyerPhotoUrl": { "type": "string", "maxLength": 60000 },
+        "state": { "type": "string", "minLength": 2, "maxLength": 4 },
+        "amountBRL": { "type": "number" },
+        "sharesCount": { "type": "number" },
+        "sharesForSaleCount": { "type": "number" },
+        "dailyQuotePercent": { "type": "number" },
+        "dailyQuotePayoutBRL": { "type": "number" },
+        "entryDate": { "type": "string", "minLength": 8, "maxLength": 20 },
+        "recordedBy": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "notes": { "type": "string", "maxLength": 240 },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "entryType",
+        "title",
+        "state",
+        "amountBRL",
+        "sharesCount",
+        "entryDate",
+        "recordedBy",
+        "active",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "BusinessPortalRecord": {
+      "title": "BusinessPortalRecord",
+      "description": "Entrepreneurial records for client & hospitality registration, partner hotel event bookings, sales referral tree nodes, and Plano 10% CONAE investments.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "recordType": { "type": "string", "enum": ["client", "hotel_event", "sales_tree", "plan_10_investment"] },
+        "title": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "companyOrHotel": { "type": "string", "maxLength": 120 },
+        "parentNodeId": { "type": "string", "maxLength": 128 },
+        "contactPhone": { "type": "string", "maxLength": 30 },
+        "state": { "type": "string", "minLength": 2, "maxLength": 4 },
+        "eventDate": { "type": "string", "maxLength": 20 },
+        "guestsCount": { "type": "number" },
+        "hotelId": { "type": "string", "maxLength": 128 },
+        "discountPercent": { "type": "number" },
+        "investmentAmountBRL": { "type": "number" },
+        "notes": { "type": "string", "maxLength": 300 },
+        "status": { "type": "string", "enum": ["active", "pending", "confirmed"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "userId",
+        "ownerName",
+        "recordType",
+        "title",
+        "state",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "EcclesiasticalPortalRecord": {
+      "title": "EcclesiasticalPortalRecord",
+      "description": "Ecclesiastical management records for accrediting ministers/workers into CONAE and promoting ministry events with access to courses, hotels, and discounted flights.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "recordType": { "type": "string", "enum": ["worker_affiliate", "ministry_event"] },
+        "fullNameOrTitle": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "ministryRole": { "type": "string", "maxLength": 60 },
+        "churchName": { "type": "string", "maxLength": 120 },
+        "contactPhone": { "type": "string", "maxLength": 30 },
+        "city": { "type": "string", "maxLength": 80 },
+        "state": { "type": "string", "minLength": 2, "maxLength": 4 },
+        "eventDate": { "type": "string", "maxLength": 20 },
+        "expectedAttendees": { "type": "number" },
+        "credentialCode": { "type": "string", "maxLength": 60 },
+        "notes": { "type": "string", "maxLength": 300 },
+        "status": { "type": "string", "enum": ["active", "pending", "accredited"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "userId",
+        "ownerName",
+        "recordType",
+        "fullNameOrTitle",
+        "state",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ExecutiveMandate": {
+      "title": "ExecutiveMandate",
+      "description": "President-granted mandate (outorgação) assigning an Executive or Affiliate responsibility to close deals in hotels, pharmacies, clubs, or audit operations, with submitted execution reports for catalog insertion.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "assigneeUid": { "type": "string", "maxLength": 128 },
+        "assigneeName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "assigneeRole": { "type": "string", "enum": ["Executivo", "Afiliado"] },
+        "area": { "type": "string", "enum": ["Hotelaria", "Farmácia", "Clubes", "Fiscalização de Operações", "Cursos & Eventos", "Comércio & Parcerias"] },
+        "missionTitle": { "type": "string", "minLength": 2, "maxLength": 140 },
+        "scopeDescription": { "type": "string", "minLength": 2, "maxLength": 400 },
+        "state": { "type": "string", "minLength": 2, "maxLength": 4 },
+        "city": { "type": "string", "maxLength": 80 },
+        "partnerName": { "type": "string", "maxLength": 120 },
+        "partnerDiscountPercent": { "type": "number" },
+        "partnerStars": { "type": "number" },
+        "executionReport": { "type": "string", "maxLength": 600 },
+        "reportSubmittedBy": { "type": "string", "maxLength": 100 },
+        "reportSubmittedAt": { "type": "string", "maxLength": 40 },
+        "insertedIntoCatalog": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["outorgado", "em_execucao", "relatorio_enviado", "aprovado", "revogado"] },
+        "grantedBy": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "assigneeName",
+        "assigneeRole",
+        "area",
+        "missionTitle",
+        "scopeDescription",
+        "state",
+        "insertedIntoCatalog",
+        "status",
+        "grantedBy",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private affiliate profile and patrimony data."
+    },
+    "/public_affiliates/{userId}": {
+      "schema": { "$ref": "#/entities/PublicAffiliate" },
+      "description": "Non-PII affiliate directory cards."
+    },
+    "/admins/{userId}": {
+      "schema": { "$ref": "#/entities/AdminMember" },
+      "description": "Executive board and President admin UIDs."
+    },
+    "/executive_pix/{pixId}": {
+      "schema": { "$ref": "#/entities/ExecutivePix" },
+      "description": "Executive PIX keys for package order routing."
+    },
+    "/package_orders/{orderId}": {
+      "schema": { "$ref": "#/entities/PackageOrder" },
+      "description": "Investment package orders awaiting Executive confirmation."
+    },
+    "/usd_investments/{invId}": {
+      "schema": { "$ref": "#/entities/UsdInvestment" },
+      "description": "Deriv P2P and Conta Global USD investment deposits."
+    },
+    "/course_enrollments/{enrollId}": {
+      "schema": { "$ref": "#/entities/CourseEnrollment" },
+      "description": "Course enrollments and credentials."
+    },
+    "/hotel_bookings/{bookingId}": {
+      "schema": { "$ref": "#/entities/HotelBooking" },
+      "description": "VIP hotel and club reservations."
+    },
+    "/hotels/{hotelId}": {
+      "schema": { "$ref": "#/entities/PartnerHotel" },
+      "description": "CONAE partner hotels and clubs by state."
+    },
+    "/courses/{courseId}": {
+      "schema": { "$ref": "#/entities/CourseItem" },
+      "description": "CONAE Cursos catalog."
+    },
+    "/sponsors/{sponsorId}": {
+      "schema": { "$ref": "#/entities/SponsorItem" },
+      "description": "Official CONAE sponsors with uploaded photos and benefits."
+    },
+    "/benefit_partners/{partnerId}": {
+      "schema": { "$ref": "#/entities/BenefitPartner" },
+      "description": "Partner pharmacies, supermarkets, clinics/laboratories, stores, and clubs."
+    },
+    "/credential_passes/{passId}": {
+      "schema": { "$ref": "#/entities/CredentialPass" },
+      "description": "President-managed access passwords and credential cards for affiliates and executives."
+    },
+    "/vip_executive_hashes/{passId}": {
+      "schema": { "$ref": "#/entities/VipExecutiveHash" },
+      "description": "SHA-256 verification hashes for individual executive VIP Room passes."
+    },
+    "/vip_public/{docId}": {
+      "schema": { "$ref": "#/entities/VipRoomPublic" },
+      "description": "SHA-256 hash of monthly VIP room password."
+    },
+    "/vip_secrets/{docId}": {
+      "schema": { "$ref": "#/entities/VipRoomSecret" },
+      "description": "Executive-only plaintext monthly VIP password."
+    },
+    "/shareholder_orders/{orderId}": {
+      "schema": { "$ref": "#/entities/ShareholderOrder" },
+      "description": "Shareholder mathematical lot purchase requests reviewed by President/Executive Board and registered in Cartório."
+    },
+    "/shareholder_summary/{docId}": {
+      "schema": { "$ref": "#/entities/ShareholderSummary" },
+      "description": "Non-PII aggregate cap-table counts for 100,000 total CONAE shares."
+    },
+    "/booking_public/{docId}": {
+      "schema": { "$ref": "#/entities/BookingPublicConfig" },
+      "description": "Public-safe Booking.com affiliate partner AID and active lodging reservation token."
+    },
+    "/booking_secrets/{docId}": {
+      "schema": { "$ref": "#/entities/BookingSecretConfig" },
+      "description": "President/Executive-only Booking.com secret API token storage."
+    },
+    "/shareholder_tree/{nodeId}": {
+      "schema": { "$ref": "#/entities/ShareholderTreeNode" },
+      "description": "Non-PII branching shareholder tree nodes linked to Master President and Executive Board."
+    },
+    "/treasury_ledger/{entryId}": {
+      "schema": { "$ref": "#/entities/TreasuryEntry" },
+      "description": "Non-PII executive patrimony and CNEC share sale entries feeding the real-time daily share quote and 27-state percentages."
+    },
+    "/business_portal_records/{recordId}": {
+      "schema": { "$ref": "#/entities/BusinessPortalRecord" },
+      "description": "Private entrepreneur records for hotel clients, partner hotel events, sales referral tree, and Plano 10% CONAE investments."
+    },
+    "/ecclesiastical_portal_records/{recordId}": {
+      "schema": { "$ref": "#/entities/EcclesiasticalPortalRecord" },
+      "description": "Private ecclesiastical records for accredited obreiros/affiliates and promoted ministry events."
+    },
+    "/executive_mandates/{mandateId}": {
+      "schema": { "$ref": "#/entities/ExecutiveMandate" },
+      "description": "President-granted outorgações and execution reports for hotelaria, farmácias, clubes, and operational inspections."
+    }
+  }
+}

@@ -1,0 +1,1000 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Global Primitive Helpers
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isBootstrappedAdmin() {
+      return isSignedIn() && request.auth.token.email == 'princesabloxy123@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidStr(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+
+    // 3. Entity Validation Blueprints
+    function isValidUserProfile(data) {
+      return data.keys().hasAll([
+        'uid', 'displayName', 'email', 'state', 'role', 'vipTier',
+        'balanceBRL', 'balanceUSD', 'cnecTokens', 'monthlyPlanActive',
+        'virtualCardActive', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'uid', 'displayName', 'email', 'phone', 'state', 'cpf',
+        'loginUsername', 'loginSecretHash', 'photoUrl', 'role', 'vipTier',
+        'balanceBRL', 'balanceUSD', 'cnecTokens', 'monthlyPlanActive',
+        'virtualCardActive', 'executiveCardActive', 'sharesOwned', 'sharesNotaryCode',
+        'cardNumber', 'bankToken', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.uid) &&
+      isValidStr(data.displayName, 2, 100) &&
+      isValidStr(data.email, 3, 150) &&
+      (!('phone' in data) || isValidStr(data.phone, 0, 30)) &&
+      isValidStr(data.state, 2, 4) &&
+      (!('cpf' in data) || isValidStr(data.cpf, 0, 20)) &&
+      (!('loginUsername' in data) || isValidStr(data.loginUsername, 3, 50)) &&
+      (!('loginSecretHash' in data) || isValidStr(data.loginSecretHash, 0, 128)) &&
+      (!('photoUrl' in data) || isValidStr(data.photoUrl, 0, 60000)) &&
+      data.role in ['affiliate', 'staff', 'executive', 'president'] &&
+      data.vipTier in ['Padrao', 'Prata', 'Ouro', 'Diamante'] &&
+      data.balanceBRL is number && data.balanceBRL >= 0 &&
+      data.balanceUSD is number && data.balanceUSD >= 0 &&
+      data.cnecTokens is number && data.cnecTokens >= 0 &&
+      data.monthlyPlanActive is bool &&
+      data.virtualCardActive is bool &&
+      (!('executiveCardActive' in data) || data.executiveCardActive is bool) &&
+      (!('sharesOwned' in data) || (data.sharesOwned is number && data.sharesOwned >= 0 && data.sharesOwned <= 100000)) &&
+      (!('sharesNotaryCode' in data) || isValidStr(data.sharesNotaryCode, 0, 80)) &&
+      (!('cardNumber' in data) || isValidStr(data.cardNumber, 0, 32)) &&
+      (!('bankToken' in data) || isValidStr(data.bankToken, 0, 64)) &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidPublicAffiliate(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'state', 'vipTier', 'createdAt', 'updatedAt']) &&
+      data.keys().hasOnly(['uid', 'displayName', 'state', 'photoUrl', 'vipTier', 'createdAt', 'updatedAt']) &&
+      isValidId(data.uid) &&
+      isValidStr(data.displayName, 2, 100) &&
+      isValidStr(data.state, 2, 4) &&
+      (!('photoUrl' in data) || isValidStr(data.photoUrl, 0, 60000)) &&
+      data.vipTier in ['Padrao', 'Prata', 'Ouro', 'Diamante'] &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidAdminMember(data) {
+      return data.keys().hasAll(['uid', 'email', 'roleTitle', 'createdAt']) &&
+      data.keys().hasOnly(['uid', 'email', 'roleTitle', 'createdAt']) &&
+      isValidId(data.uid) &&
+      isValidStr(data.email, 3, 150) &&
+      isValidStr(data.roleTitle, 2, 80) &&
+      data.createdAt is timestamp;
+    }
+
+    function isValidExecutivePix(data) {
+      return data.keys().hasAll([
+        'id', 'executiveName', 'executiveRole', 'bankName',
+        'pixKey', 'pixType', 'city', 'active', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'executiveName', 'executiveRole', 'bankName',
+        'pixKey', 'pixType', 'city', 'active', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      isValidStr(data.executiveName, 2, 100) &&
+      isValidStr(data.executiveRole, 2, 80) &&
+      isValidStr(data.bankName, 2, 60) &&
+      isValidStr(data.pixKey, 3, 140) &&
+      data.pixType in ['CNPJ', 'CPF', 'Email', 'Telefone', 'Aleatoria'] &&
+      isValidStr(data.city, 2, 60) &&
+      data.active is bool &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidPackageOrder(data) {
+      return data.keys().hasAll([
+        'id', 'userId', 'userName', 'packageId', 'packageName',
+        'amountBRL', 'cnecAmount', 'paymentMethod', 'status', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'userId', 'userName', 'packageId', 'packageName',
+        'amountBRL', 'cnecAmount', 'paymentMethod', 'executivePixId',
+        'executiveName', 'status', 'notes', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      isValidId(data.userId) &&
+      isValidStr(data.userName, 2, 100) &&
+      isValidStr(data.packageId, 1, 64) &&
+      isValidStr(data.packageName, 2, 120) &&
+      data.amountBRL is number && data.amountBRL > 0 &&
+      data.cnecAmount is number && data.cnecAmount >= 0 &&
+      data.paymentMethod in ['PIX_INTER', 'PIX_MULTI', 'CONTA_GLOBAL_USD', 'DERIV_P2P'] &&
+      (!('executivePixId' in data) || isValidStr(data.executivePixId, 0, 128)) &&
+      (!('executiveName' in data) || isValidStr(data.executiveName, 0, 100)) &&
+      data.status in ['pending', 'approved', 'rejected'] &&
+      (!('notes' in data) || isValidStr(data.notes, 0, 300)) &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidUsdInvestment(data) {
+      return data.keys().hasAll([
+        'id', 'userId', 'userName', 'amountUSD', 'quoteBRL',
+        'amountBRL', 'platform', 'status', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'userId', 'userName', 'amountUSD', 'quoteBRL',
+        'amountBRL', 'platform', 'status', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      isValidId(data.userId) &&
+      isValidStr(data.userName, 2, 100) &&
+      data.amountUSD is number && data.amountUSD > 0 &&
+      data.quoteBRL is number && data.quoteBRL > 0 &&
+      data.amountBRL is number && data.amountBRL > 0 &&
+      data.platform in ['DERIV_P2P', 'INTER_GLOBAL', 'CDB_INTER'] &&
+      data.status in ['pending', 'approved', 'rejected'] &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidCourseEnrollment(data) {
+      return data.keys().hasAll([
+        'id', 'userId', 'userName', 'courseId', 'courseTitle',
+        'modality', 'status', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'userId', 'userName', 'courseId', 'courseTitle',
+        'modality', 'status', 'credentialCode', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      isValidId(data.userId) &&
+      isValidStr(data.userName, 2, 100) &&
+      isValidStr(data.courseId, 1, 64) &&
+      isValidStr(data.courseTitle, 2, 120) &&
+      data.modality in ['Presencial', 'Online EAD', 'Hibrido'] &&
+      data.status in ['pending', 'active', 'certified'] &&
+      (!('credentialCode' in data) || isValidStr(data.credentialCode, 0, 40)) &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidHotelBooking(data) {
+      return data.keys().hasAll([
+        'id', 'userId', 'userName', 'hotelId', 'hotelName',
+        'state', 'stars', 'checkInDate', 'guests', 'status', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'userId', 'userName', 'hotelId', 'hotelName',
+        'state', 'stars', 'checkInDate', 'guests', 'status',
+        'bookingToken', 'bookingChannel', 'bookingUrl',
+        'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      isValidId(data.userId) &&
+      isValidStr(data.userName, 2, 100) &&
+      isValidStr(data.hotelId, 1, 64) &&
+      isValidStr(data.hotelName, 2, 120) &&
+      isValidStr(data.state, 2, 4) &&
+      data.stars is number && data.stars >= 1 && data.stars <= 5 &&
+      isValidStr(data.checkInDate, 4, 20) &&
+      data.guests is number && data.guests >= 1 && data.guests <= 20 &&
+      data.status in ['pending', 'confirmed', 'cancelled'] &&
+      (!('bookingToken' in data) || isValidStr(data.bookingToken, 4, 64)) &&
+      (!('bookingChannel' in data) || data.bookingChannel in ['CONAE_BOOKING_TOKEN', 'HOTEL_DIRECT']) &&
+      (!('bookingUrl' in data) || isValidStr(data.bookingUrl, 0, 400)) &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidPartnerHotel(data) {
+      return data.keys().hasAll([
+        'id', 'name', 'city', 'state', 'category', 'stars',
+        'discountPercent', 'description', 'active', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'name', 'city', 'state', 'category', 'stars',
+        'discountPercent', 'description', 'photoUrl', 'galleryPhotos',
+        'hotelBenefits', 'placeId', 'mapAddress', 'lat', 'lng',
+        'active', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      isValidStr(data.name, 2, 120) &&
+      isValidStr(data.city, 2, 80) &&
+      isValidStr(data.state, 2, 4) &&
+      data.category in ['Hotel', 'Clube de Eventos', 'Resort Conveniado'] &&
+      data.stars is number && data.stars >= 2 && data.stars <= 5 &&
+      data.discountPercent is number && data.discountPercent >= 0 && data.discountPercent <= 100 &&
+      isValidStr(data.description, 2, 400) &&
+      (!('photoUrl' in data) || isValidStr(data.photoUrl, 0, 60000)) &&
+      (!('galleryPhotos' in data) || (
+        data.galleryPhotos is list &&
+        data.galleryPhotos.size() <= 5 &&
+        (data.galleryPhotos.size() == 0 || (data.galleryPhotos[0] is string && data.galleryPhotos[0].size() <= 60000))
+      )) &&
+      (!('hotelBenefits' in data) || isValidStr(data.hotelBenefits, 0, 300)) &&
+      (!('placeId' in data) || isValidStr(data.placeId, 0, 200)) &&
+      (!('mapAddress' in data) || isValidStr(data.mapAddress, 0, 240)) &&
+      (!('lat' in data) || (data.lat is number && data.lat >= -90 && data.lat <= 90)) &&
+      (!('lng' in data) || (data.lng is number && data.lng >= -180 && data.lng <= 180)) &&
+      data.active is bool &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidCourseItem(data) {
+      return data.keys().hasAll([
+        'id', 'title', 'category', 'duration', 'modality',
+        'feeLabel', 'description', 'active', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'title', 'category', 'duration', 'modality',
+        'feeLabel', 'schedule', 'location', 'description', 'photoUrl',
+        'active', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      isValidStr(data.title, 2, 120) &&
+      isValidStr(data.category, 2, 60) &&
+      isValidStr(data.duration, 1, 40) &&
+      data.modality in ['Presencial', 'Online EAD', 'Hibrido'] &&
+      isValidStr(data.feeLabel, 1, 100) &&
+      (!('schedule' in data) || isValidStr(data.schedule, 0, 120)) &&
+      (!('location' in data) || isValidStr(data.location, 0, 160)) &&
+      isValidStr(data.description, 2, 400) &&
+      (!('photoUrl' in data) || isValidStr(data.photoUrl, 0, 60000)) &&
+      data.active is bool &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidSponsorItem(data) {
+      return data.keys().hasAll([
+        'id', 'name', 'segment', 'benefit', 'description', 'active', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'name', 'segment', 'benefit', 'description', 'photoUrl', 'active', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      isValidStr(data.name, 2, 120) &&
+      isValidStr(data.segment, 2, 80) &&
+      isValidStr(data.benefit, 2, 200) &&
+      isValidStr(data.description, 2, 400) &&
+      (!('photoUrl' in data) || isValidStr(data.photoUrl, 0, 60000)) &&
+      data.active is bool &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidBenefitPartner(data) {
+      return data.keys().hasAll([
+        'id', 'name', 'category', 'city', 'state', 'discountPercent',
+        'description', 'hotelExclusive', 'active', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'name', 'category', 'city', 'state', 'discountPercent',
+        'description', 'photoUrl', 'hotelExclusive', 'active', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      isValidStr(data.name, 2, 120) &&
+      data.category in ['Farmácia', 'Supermercado', 'Clínica & Laboratório', 'Comércio', 'Clube Conveniado'] &&
+      isValidStr(data.city, 2, 80) &&
+      isValidStr(data.state, 2, 4) &&
+      data.discountPercent is number && data.discountPercent >= 0 && data.discountPercent <= 100 &&
+      isValidStr(data.description, 2, 400) &&
+      (!('photoUrl' in data) || isValidStr(data.photoUrl, 0, 60000)) &&
+      data.hotelExclusive is bool &&
+      data.active is bool &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidCredentialPass(data) {
+      return data.keys().hasAll([
+        'id', 'holderName', 'passType', 'issuedPasswordHash',
+        'issuedPasswordPlain', 'goldenCardActive', 'monthlyPaid', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'targetUid', 'holderName', 'holderEmail', 'passType',
+        'issuedPasswordHash', 'issuedPasswordPlain', 'hotelName',
+        'goldenCardActive', 'monthlyPaid', 'notes', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      (!('targetUid' in data) || isValidStr(data.targetUid, 0, 128)) &&
+      isValidStr(data.holderName, 2, 100) &&
+      (!('holderEmail' in data) || isValidStr(data.holderEmail, 0, 150)) &&
+      data.passType in ['Afiliado', 'Executivo VIP', 'Hoteleiro'] &&
+      isValidStr(data.issuedPasswordHash, 64, 64) &&
+      isValidStr(data.issuedPasswordPlain, 4, 64) &&
+      (!('hotelName' in data) || isValidStr(data.hotelName, 0, 120)) &&
+      data.goldenCardActive is bool &&
+      data.monthlyPaid is bool &&
+      (!('notes' in data) || isValidStr(data.notes, 0, 240)) &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidVipExecutiveHash(data) {
+      return data.keys().hasAll(['id', 'executiveName', 'passwordHash', 'active', 'updatedAt']) &&
+      data.keys().hasOnly(['id', 'executiveName', 'passwordHash', 'active', 'updatedAt']) &&
+      isValidId(data.id) &&
+      isValidStr(data.executiveName, 2, 100) &&
+      isValidStr(data.passwordHash, 64, 64) &&
+      data.active is bool &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidVipRoomPublic(data) {
+      return data.keys().hasAll([
+        'id', 'monthLabel', 'passwordHash', 'buySignalTitle',
+        'buySignalAsset', 'buySignalTargetBRL', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'monthLabel', 'passwordHash', 'buySignalTitle',
+        'buySignalAsset', 'buySignalTargetBRL', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      isValidStr(data.monthLabel, 2, 40) &&
+      isValidStr(data.passwordHash, 64, 64) &&
+      isValidStr(data.buySignalTitle, 2, 140) &&
+      isValidStr(data.buySignalAsset, 2, 40) &&
+      data.buySignalTargetBRL is number && data.buySignalTargetBRL >= 0 &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidVipRoomSecret(data) {
+      return data.keys().hasAll(['id', 'monthLabel', 'plainPassword', 'updatedBy', 'updatedAt']) &&
+      data.keys().hasOnly(['id', 'monthLabel', 'plainPassword', 'updatedBy', 'updatedAt']) &&
+      isValidId(data.id) &&
+      isValidStr(data.monthLabel, 2, 40) &&
+      isValidStr(data.plainPassword, 4, 64) &&
+      isValidStr(data.updatedBy, 2, 100) &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidShareholderOrder(data) {
+      return data.keys().hasAll([
+        'id', 'userId', 'userName', 'divisionLabel', 'lotCount', 'sharesPerLot',
+        'totalShares', 'percentOwnership', 'estimatedValueBRL', 'status', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'userId', 'userName', 'userPhone', 'userDocument', 'divisionLabel',
+        'lotCount', 'sharesPerLot', 'totalShares', 'percentOwnership', 'estimatedValueBRL',
+        'status', 'notaryCode', 'presidentNotes', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      isValidId(data.userId) &&
+      isValidStr(data.userName, 2, 100) &&
+      (!('userPhone' in data) || isValidStr(data.userPhone, 0, 30)) &&
+      (!('userDocument' in data) || isValidStr(data.userDocument, 0, 30)) &&
+      isValidStr(data.divisionLabel, 2, 100) &&
+      data.lotCount is number && data.lotCount >= 1 && data.lotCount <= 10000 &&
+      data.sharesPerLot is number && data.sharesPerLot >= 1 && data.sharesPerLot <= 100000 &&
+      data.totalShares is number && data.totalShares >= 1 && data.totalShares <= 100000 &&
+      data.percentOwnership is number && data.percentOwnership > 0 && data.percentOwnership <= 100 &&
+      data.estimatedValueBRL is number && data.estimatedValueBRL >= 0 &&
+      data.status in ['pending', 'documentacao', 'cartorio', 'approved', 'rejected'] &&
+      (!('notaryCode' in data) || isValidStr(data.notaryCode, 0, 80)) &&
+      (!('presidentNotes' in data) || isValidStr(data.presidentNotes, 0, 300)) &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidShareholderSummary(data) {
+      return data.keys().hasAll([
+        'id', 'totalCapitalShares', 'allocatedShares', 'inProcessShares', 'activeShareholdersCount', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'totalCapitalShares', 'allocatedShares', 'inProcessShares', 'activeShareholdersCount', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      data.totalCapitalShares is number && data.totalCapitalShares == 100000 &&
+      data.allocatedShares is number && data.allocatedShares >= 0 && data.allocatedShares <= 100000 &&
+      data.inProcessShares is number && data.inProcessShares >= 0 && data.inProcessShares <= 100000 &&
+      data.activeShareholdersCount is number && data.activeShareholdersCount >= 0 &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidBookingPublic(data) {
+      return data.keys().hasAll([
+        'id', 'connected', 'partnerAid', 'tokenPrefix',
+        'activeBookingToken', 'bookingDomain', 'defaultDiscountPercent', 'updatedBy', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'connected', 'partnerAid', 'tokenPrefix',
+        'activeBookingToken', 'bookingDomain', 'defaultDiscountPercent', 'updatedBy', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      data.connected is bool &&
+      isValidStr(data.partnerAid, 2, 32) &&
+      isValidStr(data.tokenPrefix, 2, 24) &&
+      isValidStr(data.activeBookingToken, 4, 64) &&
+      isValidStr(data.bookingDomain, 4, 80) &&
+      data.defaultDiscountPercent is number && data.defaultDiscountPercent >= 0 && data.defaultDiscountPercent <= 100 &&
+      isValidStr(data.updatedBy, 2, 100) &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidBookingSecret(data) {
+      return data.keys().hasAll([
+        'id', 'bookingApiToken', 'partnerAid', 'tokenMasked', 'updatedBy', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'bookingApiToken', 'partnerAid', 'tokenMasked', 'updatedBy', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      isValidStr(data.bookingApiToken, 4, 200) &&
+      isValidStr(data.partnerAid, 2, 32) &&
+      isValidStr(data.tokenMasked, 2, 64) &&
+      isValidStr(data.updatedBy, 2, 100) &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidShareholderTreeNode(data) {
+      return data.keys().hasAll([
+        'id', 'fullName', 'branchTitle', 'state', 'parentNodeId',
+        'sharesCount', 'sharePercent', 'executionPowers',
+        'hotelDiscountAccess', 'coursesAccess', 'treasuryTitlesEligible',
+        'treasuryProbabilityPercent', 'treasuryProbabilityTier',
+        'active', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'fullName', 'branchTitle', 'state', 'photoUrl', 'parentNodeId',
+        'sharesCount', 'sharePercent', 'executionPowers',
+        'hotelDiscountAccess', 'coursesAccess', 'treasuryTitlesEligible',
+        'treasuryProbabilityPercent', 'treasuryProbabilityTier',
+        'notaryCode', 'active', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      isValidStr(data.fullName, 2, 100) &&
+      isValidStr(data.branchTitle, 2, 120) &&
+      isValidStr(data.state, 2, 4) &&
+      (!('photoUrl' in data) || isValidStr(data.photoUrl, 0, 60000)) &&
+      isValidId(data.parentNodeId) &&
+      data.sharesCount is number && data.sharesCount >= 0 && data.sharesCount <= 100000 &&
+      data.sharePercent is number && data.sharePercent >= 0 && data.sharePercent <= 100 &&
+      isValidStr(data.executionPowers, 2, 260) &&
+      data.hotelDiscountAccess is bool &&
+      data.coursesAccess is bool &&
+      data.treasuryTitlesEligible is bool &&
+      data.treasuryProbabilityPercent is number && data.treasuryProbabilityPercent >= 0 && data.treasuryProbabilityPercent <= 100 &&
+      data.treasuryProbabilityTier in ['Padrao', 'Alta', 'Maxima'] &&
+      (!('notaryCode' in data) || isValidStr(data.notaryCode, 0, 80)) &&
+      data.active is bool &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidTreasuryEntry(data) {
+      return data.keys().hasAll([
+        'id', 'entryType', 'title', 'state', 'amountBRL', 'sharesCount',
+        'entryDate', 'recordedBy', 'active', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'entryType', 'title', 'buyerName', 'buyerPhotoUrl', 'state',
+        'amountBRL', 'sharesCount', 'sharesForSaleCount', 'dailyQuotePercent',
+        'dailyQuotePayoutBRL', 'entryDate', 'recordedBy', 'notes', 'active',
+        'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      data.entryType in ['patrimonio', 'venda_acoes', 'cotacao_dia'] &&
+      isValidStr(data.title, 2, 120) &&
+      (!('buyerName' in data) || isValidStr(data.buyerName, 0, 100)) &&
+      (!('buyerPhotoUrl' in data) || isValidStr(data.buyerPhotoUrl, 0, 60000)) &&
+      isValidStr(data.state, 2, 4) &&
+      data.amountBRL is number && data.amountBRL >= 0 && data.amountBRL <= 1000000000 &&
+      data.sharesCount is number && data.sharesCount >= 0 && data.sharesCount <= 100000 &&
+      (!('sharesForSaleCount' in data) || (data.sharesForSaleCount is number && data.sharesForSaleCount >= 0 && data.sharesForSaleCount <= 100000)) &&
+      (!('dailyQuotePercent' in data) || (data.dailyQuotePercent is number && data.dailyQuotePercent >= -100 && data.dailyQuotePercent <= 1000)) &&
+      (!('dailyQuotePayoutBRL' in data) || (data.dailyQuotePayoutBRL is number && data.dailyQuotePayoutBRL >= 0 && data.dailyQuotePayoutBRL <= 1000000000)) &&
+      isValidStr(data.entryDate, 8, 20) &&
+      isValidStr(data.recordedBy, 2, 100) &&
+      (!('notes' in data) || isValidStr(data.notes, 0, 240)) &&
+      data.active is bool &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidBusinessPortalRecord(data) {
+      return data.keys().hasAll([
+        'id', 'userId', 'ownerName', 'recordType', 'title', 'state', 'status', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'userId', 'ownerName', 'recordType', 'title', 'companyOrHotel',
+        'parentNodeId', 'contactPhone', 'state', 'eventDate', 'guestsCount',
+        'hotelId', 'discountPercent', 'investmentAmountBRL', 'notes',
+        'status', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      isValidId(data.userId) &&
+      isValidStr(data.ownerName, 2, 100) &&
+      data.recordType in ['client', 'hotel_event', 'sales_tree', 'plan_10_investment'] &&
+      isValidStr(data.title, 2, 120) &&
+      (!('companyOrHotel' in data) || isValidStr(data.companyOrHotel, 0, 120)) &&
+      (!('parentNodeId' in data) || isValidStr(data.parentNodeId, 0, 128)) &&
+      (!('contactPhone' in data) || isValidStr(data.contactPhone, 0, 30)) &&
+      isValidStr(data.state, 2, 4) &&
+      (!('eventDate' in data) || isValidStr(data.eventDate, 0, 20)) &&
+      (!('guestsCount' in data) || (data.guestsCount is number && data.guestsCount >= 0 && data.guestsCount <= 10000)) &&
+      (!('hotelId' in data) || isValidStr(data.hotelId, 0, 128)) &&
+      (!('discountPercent' in data) || (data.discountPercent is number && data.discountPercent >= 0 && data.discountPercent <= 100)) &&
+      (!('investmentAmountBRL' in data) || (data.investmentAmountBRL is number && data.investmentAmountBRL >= 0 && data.investmentAmountBRL <= 100000000)) &&
+      (!('notes' in data) || isValidStr(data.notes, 0, 300)) &&
+      data.status in ['active', 'pending', 'confirmed'] &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidEcclesiasticalPortalRecord(data) {
+      return data.keys().hasAll([
+        'id', 'userId', 'ownerName', 'recordType', 'fullNameOrTitle', 'state', 'status', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'userId', 'ownerName', 'recordType', 'fullNameOrTitle', 'ministryRole',
+        'churchName', 'contactPhone', 'city', 'state', 'eventDate', 'expectedAttendees',
+        'credentialCode', 'notes', 'status', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      isValidId(data.userId) &&
+      isValidStr(data.ownerName, 2, 100) &&
+      data.recordType in ['worker_affiliate', 'ministry_event'] &&
+      isValidStr(data.fullNameOrTitle, 2, 120) &&
+      (!('ministryRole' in data) || isValidStr(data.ministryRole, 0, 60)) &&
+      (!('churchName' in data) || isValidStr(data.churchName, 0, 120)) &&
+      (!('contactPhone' in data) || isValidStr(data.contactPhone, 0, 30)) &&
+      (!('city' in data) || isValidStr(data.city, 0, 80)) &&
+      isValidStr(data.state, 2, 4) &&
+      (!('eventDate' in data) || isValidStr(data.eventDate, 0, 20)) &&
+      (!('expectedAttendees' in data) || (data.expectedAttendees is number && data.expectedAttendees >= 0 && data.expectedAttendees <= 100000)) &&
+      (!('credentialCode' in data) || isValidStr(data.credentialCode, 0, 60)) &&
+      (!('notes' in data) || isValidStr(data.notes, 0, 300)) &&
+      data.status in ['active', 'pending', 'accredited'] &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidExecutiveMandate(data) {
+      return data.keys().hasAll([
+        'id', 'assigneeName', 'assigneeRole', 'area', 'missionTitle', 'scopeDescription',
+        'state', 'insertedIntoCatalog', 'status', 'grantedBy', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'assigneeUid', 'assigneeName', 'assigneeRole', 'area', 'missionTitle',
+        'scopeDescription', 'state', 'city', 'partnerName', 'partnerDiscountPercent',
+        'partnerStars', 'executionReport', 'reportSubmittedBy', 'reportSubmittedAt',
+        'insertedIntoCatalog', 'status', 'grantedBy', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      (!('assigneeUid' in data) || isValidStr(data.assigneeUid, 0, 128)) &&
+      isValidStr(data.assigneeName, 2, 100) &&
+      data.assigneeRole in ['Executivo', 'Afiliado'] &&
+      data.area in ['Hotelaria', 'Farmácia', 'Clubes', 'Fiscalização de Operações', 'Cursos & Eventos', 'Comércio & Parcerias'] &&
+      isValidStr(data.missionTitle, 2, 140) &&
+      isValidStr(data.scopeDescription, 2, 400) &&
+      isValidStr(data.state, 2, 4) &&
+      (!('city' in data) || isValidStr(data.city, 0, 80)) &&
+      (!('partnerName' in data) || isValidStr(data.partnerName, 0, 120)) &&
+      (!('partnerDiscountPercent' in data) || (data.partnerDiscountPercent is number && data.partnerDiscountPercent >= 0 && data.partnerDiscountPercent <= 100)) &&
+      (!('partnerStars' in data) || (data.partnerStars is number && data.partnerStars >= 2 && data.partnerStars <= 5)) &&
+      (!('executionReport' in data) || isValidStr(data.executionReport, 0, 600)) &&
+      (!('reportSubmittedBy' in data) || isValidStr(data.reportSubmittedBy, 0, 100)) &&
+      (!('reportSubmittedAt' in data) || isValidStr(data.reportSubmittedAt, 0, 40)) &&
+      data.insertedIntoCatalog is bool &&
+      data.status in ['outorgado', 'em_execucao', 'relatorio_enviado', 'aprovado', 'revogado'] &&
+      isValidStr(data.grantedBy, 2, 100) &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    // 4. Collection Rules
+    match /test/{docId} {
+      allow get: if isValidId(docId);
+    }
+
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isBootstrappedAdmin();
+      allow create: if isValidId(userId) && isOwner(userId) &&
+        isValidUserProfile(incoming()) &&
+        incoming().uid == request.auth.uid &&
+        incoming().role == 'affiliate' &&
+        incoming().vipTier == 'Padrao' &&
+        incoming().balanceBRL == 0 &&
+        incoming().balanceUSD == 0 &&
+        incoming().cnecTokens == 0 &&
+        incoming().monthlyPlanActive == false &&
+        incoming().virtualCardActive == false &&
+        (!('executiveCardActive' in incoming()) || incoming().executiveCardActive == false) &&
+        (!('sharesOwned' in incoming()) || incoming().sharesOwned == 0) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(userId) && isValidUserProfile(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          (isOwner(userId) && incoming().diff(existing()).affectedKeys().hasOnly([
+            'displayName', 'phone', 'state', 'cpf', 'loginUsername', 'loginSecretHash', 'photoUrl', 'bankToken', 'updatedAt'
+          ]))
+        );
+      allow delete: if isValidId(userId) && (isOwner(userId) || isAdmin());
+    }
+
+    match /public_affiliates/{userId} {
+      allow get: if isValidId(userId);
+      allow list: if true;
+      allow create: if isValidId(userId) && isOwner(userId) &&
+        isValidPublicAffiliate(incoming()) &&
+        incoming().uid == request.auth.uid &&
+        incoming().vipTier == 'Padrao' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(userId) && isValidPublicAffiliate(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          (isOwner(userId) && incoming().diff(existing()).affectedKeys().hasOnly([
+            'displayName', 'state', 'photoUrl', 'updatedAt'
+          ]))
+        );
+      allow delete: if isValidId(userId) && (isOwner(userId) || isAdmin());
+    }
+
+    match /admins/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isBootstrappedAdmin();
+      allow create, update: if isValidId(userId) && isAdmin() && isValidAdminMember(incoming()) &&
+        incoming().createdAt == request.time;
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    match /executive_pix/{pixId} {
+      allow get: if isValidId(pixId) && isSignedIn();
+      allow list: if isSignedIn() && (isBootstrappedAdmin() || resource.data.active == true);
+      allow create: if isValidId(pixId) && isAdmin() && isValidExecutivePix(incoming()) &&
+        incoming().id == pixId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(pixId) && isAdmin() && isValidExecutivePix(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(pixId) && isAdmin();
+    }
+
+    match /package_orders/{orderId} {
+      allow get: if isValidId(orderId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (isBootstrappedAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isValidId(orderId) && isSignedIn() && isValidPackageOrder(incoming()) &&
+        incoming().id == orderId &&
+        incoming().userId == request.auth.uid &&
+        incoming().status == 'pending' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(orderId) && isAdmin() && isValidPackageOrder(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().userId == existing().userId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(orderId) && isAdmin();
+    }
+
+    match /usd_investments/{invId} {
+      allow get: if isValidId(invId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (isBootstrappedAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isValidId(invId) && isSignedIn() && isValidUsdInvestment(incoming()) &&
+        incoming().id == invId &&
+        incoming().userId == request.auth.uid &&
+        incoming().status == 'pending' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(invId) && isAdmin() && isValidUsdInvestment(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().userId == existing().userId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(invId) && isAdmin();
+    }
+
+    match /course_enrollments/{enrollId} {
+      allow get: if isValidId(enrollId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (isBootstrappedAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isValidId(enrollId) && isSignedIn() && isValidCourseEnrollment(incoming()) &&
+        incoming().id == enrollId &&
+        incoming().userId == request.auth.uid &&
+        incoming().status == 'pending' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(enrollId) && isAdmin() && isValidCourseEnrollment(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().userId == existing().userId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(enrollId) && isAdmin();
+    }
+
+    match /hotel_bookings/{bookingId} {
+      allow get: if isValidId(bookingId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (isBootstrappedAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isValidId(bookingId) && isSignedIn() && isValidHotelBooking(incoming()) &&
+        incoming().id == bookingId &&
+        incoming().userId == request.auth.uid &&
+        incoming().status == 'pending' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(bookingId) && isAdmin() && isValidHotelBooking(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().userId == existing().userId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(bookingId) && isAdmin();
+    }
+
+    match /hotels/{hotelId} {
+      allow get: if isValidId(hotelId);
+      allow list: if true;
+      allow create: if isValidId(hotelId) && isAdmin() && isValidPartnerHotel(incoming()) &&
+        incoming().id == hotelId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(hotelId) && isAdmin() && isValidPartnerHotel(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(hotelId) && isAdmin();
+    }
+
+    match /courses/{courseId} {
+      allow get: if isValidId(courseId);
+      allow list: if true;
+      allow create: if isValidId(courseId) && isAdmin() && isValidCourseItem(incoming()) &&
+        incoming().id == courseId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(courseId) && isAdmin() && isValidCourseItem(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(courseId) && isAdmin();
+    }
+
+    match /sponsors/{sponsorId} {
+      allow get: if isValidId(sponsorId);
+      allow list: if true;
+      allow create: if isValidId(sponsorId) && isAdmin() && isValidSponsorItem(incoming()) &&
+        incoming().id == sponsorId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(sponsorId) && isAdmin() && isValidSponsorItem(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(sponsorId) && isAdmin();
+    }
+
+    match /benefit_partners/{partnerId} {
+      allow get: if isValidId(partnerId);
+      allow list: if true;
+      allow create: if isValidId(partnerId) && isAdmin() && isValidBenefitPartner(incoming()) &&
+        incoming().id == partnerId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(partnerId) && isAdmin() && isValidBenefitPartner(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(partnerId) && isAdmin();
+    }
+
+    match /credential_passes/{passId} {
+      allow get: if isValidId(passId) && isSignedIn() && (existing().targetUid == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (isBootstrappedAdmin() || resource.data.targetUid == request.auth.uid);
+      allow create: if isValidId(passId) && isAdmin() && isValidCredentialPass(incoming()) &&
+        incoming().id == passId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(passId) && isAdmin() && isValidCredentialPass(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(passId) && isAdmin();
+    }
+
+    match /vip_executive_hashes/{passId} {
+      allow get: if isValidId(passId) && isSignedIn();
+      allow list: if isSignedIn() && (isBootstrappedAdmin() || resource.data.active == true);
+      allow create, update: if isValidId(passId) && isAdmin() && isValidVipExecutiveHash(incoming()) &&
+        incoming().id == passId &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(passId) && isAdmin();
+    }
+
+    match /vip_public/{docId} {
+      allow get: if isValidId(docId) && isSignedIn();
+      allow list: if false;
+      allow create, update: if isValidId(docId) && isAdmin() && isValidVipRoomPublic(incoming()) &&
+        incoming().id == docId &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(docId) && isAdmin();
+    }
+
+    match /vip_secrets/{docId} {
+      allow get: if isValidId(docId) && isAdmin();
+      allow list: if isBootstrappedAdmin();
+      allow create, update: if isValidId(docId) && isAdmin() && isValidVipRoomSecret(incoming()) &&
+        incoming().id == docId &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(docId) && isAdmin();
+    }
+
+    match /shareholder_orders/{orderId} {
+      allow get: if isValidId(orderId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (isBootstrappedAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isValidId(orderId) && isSignedIn() && isValidShareholderOrder(incoming()) &&
+        incoming().id == orderId &&
+        incoming().userId == request.auth.uid &&
+        incoming().status == 'pending' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(orderId) && isAdmin() && isValidShareholderOrder(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().userId == existing().userId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(orderId) && isAdmin();
+    }
+
+    match /shareholder_summary/{docId} {
+      allow get: if isValidId(docId);
+      allow list: if false;
+      allow create, update: if isValidId(docId) && isAdmin() && isValidShareholderSummary(incoming()) &&
+        incoming().id == docId &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(docId) && isAdmin();
+    }
+
+    match /booking_public/{docId} {
+      allow get: if isValidId(docId);
+      allow list: if false;
+      allow create, update: if isValidId(docId) && isAdmin() && isValidBookingPublic(incoming()) &&
+        incoming().id == docId &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(docId) && isAdmin();
+    }
+
+    match /booking_secrets/{docId} {
+      allow get: if isValidId(docId) && isAdmin();
+      allow list: if isBootstrappedAdmin();
+      allow create, update: if isValidId(docId) && isAdmin() && isValidBookingSecret(incoming()) &&
+        incoming().id == docId &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(docId) && isAdmin();
+    }
+
+    match /shareholder_tree/{nodeId} {
+      allow get: if isValidId(nodeId);
+      allow list: if true;
+      allow create: if isValidId(nodeId) && isAdmin() && isValidShareholderTreeNode(incoming()) &&
+        incoming().id == nodeId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(nodeId) && isAdmin() && isValidShareholderTreeNode(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(nodeId) && isAdmin();
+    }
+
+    match /treasury_ledger/{entryId} {
+      allow get: if isValidId(entryId);
+      allow list: if true;
+      allow create: if isValidId(entryId) && isAdmin() && isValidTreasuryEntry(incoming()) &&
+        incoming().id == entryId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(entryId) && isAdmin() && isValidTreasuryEntry(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(entryId) && isAdmin();
+    }
+
+    match /business_portal_records/{recordId} {
+      allow get: if isValidId(recordId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (isBootstrappedAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isValidId(recordId) && isSignedIn() && isValidBusinessPortalRecord(incoming()) &&
+        incoming().id == recordId &&
+        incoming().userId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(recordId) && isSignedIn() && isValidBusinessPortalRecord(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().userId == existing().userId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (existing().userId == request.auth.uid || isAdmin());
+      allow delete: if isValidId(recordId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+    }
+
+    match /ecclesiastical_portal_records/{recordId} {
+      allow get: if isValidId(recordId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (isBootstrappedAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isValidId(recordId) && isSignedIn() && isValidEcclesiasticalPortalRecord(incoming()) &&
+        incoming().id == recordId &&
+        incoming().userId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(recordId) && isSignedIn() && isValidEcclesiasticalPortalRecord(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().userId == existing().userId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (existing().userId == request.auth.uid || isAdmin());
+      allow delete: if isValidId(recordId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+    }
+
+    match /executive_mandates/{mandateId} {
+      allow get: if isValidId(mandateId) && isSignedIn() && (existing().assigneeUid == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (isBootstrappedAdmin() || resource.data.assigneeUid == request.auth.uid);
+      allow create: if isValidId(mandateId) && isAdmin() && isValidExecutiveMandate(incoming()) &&
+        incoming().id == mandateId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(mandateId) && isSignedIn() && isValidExecutiveMandate(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() || (
+            existing().assigneeUid == request.auth.uid &&
+            existing().status in ['outorgado', 'em_execucao', 'relatorio_enviado'] &&
+            incoming().assigneeUid == existing().assigneeUid &&
+            incoming().assigneeName == existing().assigneeName &&
+            incoming().assigneeRole == existing().assigneeRole &&
+            incoming().area == existing().area &&
+            incoming().missionTitle == existing().missionTitle &&
+            incoming().scopeDescription == existing().scopeDescription &&
+            incoming().state == existing().state &&
+            incoming().grantedBy == existing().grantedBy &&
+            incoming().insertedIntoCatalog == existing().insertedIntoCatalog &&
+            incoming().status in ['em_execucao', 'relatorio_enviado'] &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'city', 'partnerName', 'partnerDiscountPercent', 'partnerStars',
+              'executionReport', 'reportSubmittedBy', 'reportSubmittedAt', 'status', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if isValidId(mandateId) && isAdmin();
+    }
+  }
+}

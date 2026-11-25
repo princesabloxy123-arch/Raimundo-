@@ -1,0 +1,8 @@
+{
+  "name": "CONAE Convenção & Banco",
+  "description": "Plataforma oficial da Convenção Mundial CONAE: Cursos de Capelania e Teologia, Banco de Investimento, Criptomoeda CNEC, Cartão Virtual, Hotéis e Clubes VIP, Deriv P2P, Banco Inter PIX e Painel Executivo.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
