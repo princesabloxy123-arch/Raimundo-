@@ -54,6 +54,7 @@ export const BOOTSTRAPPED_ADMIN_EMAIL = 'princesabloxy123@gmail.com';
 export const PRESIDENT_MASTER_HASH = '92a1f953de6fe86d079dd4185a00c8e2bd9fb6eee898953c29102a9513812d07';
 export const APP_ACCESS_LOCK_HASH = '92a1f953de6fe86d079dd4185a00c8e2bd9fb6eee898953c29102a9513812d07';
 export const APP_INSTALL_PASSWORD_HASH = 'b674efa88b3511eb224b4a9f2da93b291aaf9f844be2759555393d194cc76ca7';
+export const VISIT_TERMINAL_PASSWORD_HASH = '24bcb67478851ecf793ceadc8ea9cb07d87dfdd1440e0fb4108a9bfbdae47d54';
 
 export enum OperationType {
   CREATE = 'create',
@@ -152,6 +153,13 @@ export async function isAppInstallPassword(value: string): Promise<boolean> {
   if (directDigest === APP_INSTALL_PASSWORD_HASH) return true;
   const lowerDigest = await sha256Hex(cleaned.toLowerCase());
   return lowerDigest === APP_INSTALL_PASSWORD_HASH;
+}
+
+export async function isVisitTerminalPassword(value: string): Promise<boolean> {
+  const cleaned = value.trim().replace(/\s+/g, '');
+  if (!cleaned) return false;
+  const directDigest = await sha256Hex(cleaned);
+  return directDigest === VISIT_TERMINAL_PASSWORD_HASH;
 }
 
 export function sanitizeDocId(prefix: string): string {

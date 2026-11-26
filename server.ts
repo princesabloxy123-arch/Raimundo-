@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { runDukeEventChat, type DukeChatRequestBody } from './api/duke-evento/chat.ts';
+import { getVisitAgentStatus, processVisitAgentEvent } from './api/visit-agent.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,6 +17,28 @@ async function startServer() {
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true, service: 'conae-duque-evento' });
+  });
+
+  app.get('/api/visit-agent', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json(getVisitAgentStatus());
+  });
+
+  app.post('/api/visit-agent', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const result = await processVisitAgentEvent(req.headers, req.body);
+      res.status(200).json(result);
+    } catch (err) {
+      const statusCode =
+        err && typeof err === 'object' && 'statusCode' in err && typeof err.statusCode === 'number'
+          ? err.statusCode
+          : 500;
+      const message =
+        err instanceof Error ? err.message : 'Erro interno no Agente Servidor de Visitas.';
+      console.error('[visit-agent]', message);
+      res.status(statusCode).json({ error: message });
+    }
   });
 
   app.get('/api/maps-config', (_req, res) => {

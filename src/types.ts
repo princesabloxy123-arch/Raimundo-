@@ -730,6 +730,27 @@ export interface DukeChatMessage {
   quickOptions?: DukeQuickOption[];
 }
 
+export type AppVisitLocationSource = 'server_geo' | 'user_consented' | 'timezone_approx';
+export type AppVisitDeviceType = 'Celular' | 'Tablet' | 'Computador' | 'Desconhecido';
+export type AppVisitEventType = 'app_open' | 'tab_view' | 'route_view' | 'test_alert';
+export type AppVisitWhatsAppStatus = 'enviado' | 'aguardando_chave' | 'erro' | 'cooldown';
+export type AppVisitWhatsAppProvider = 'meta_cloud' | 'callmebot' | 'webhook' | 'none';
 
-
-
+export interface AppVisitLog {
+  id: string;
+  sessionId: string;
+  visitorLabel: string;
+  city: string;
+  state: string;
+  country: string;
+  locationSource: AppVisitLocationSource;
+  tabName: string;
+  routePath: string;
+  pageUrl: string;
+  deviceType: AppVisitDeviceType;
+  eventType: AppVisitEventType;
+  whatsappStatus: AppVisitWhatsAppStatus;
+  whatsappProvider: AppVisitWhatsAppProvider;
+  consentAccepted: boolean;
+  createdAt?: unknown;
+}

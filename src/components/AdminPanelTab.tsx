@@ -38,6 +38,7 @@ import type {
   QuotationMathBreakdown,
   ShareholderValuationRecord,
 } from '../utils/treasuryStateStats';
+import { VisitAgentAdminPanel } from './VisitAgentAdminPanel';
 import type {
   BenefitPartner,
   BenefitPartnerCategory,
@@ -294,7 +295,15 @@ export const AdminPanelTab: React.FC<AdminPanelTabProps> = ({
   const [authorizedLabel, setAuthorizedLabel] = useState<string | null>(null);
 
   const [adminSection, setAdminSection] = useState<
-    'pedidos' | 'lancamentos' | 'outorgacao' | 'acionistas' | 'patrimonio' | 'senhas' | 'pix_vip' | 'cadastros'
+    | 'pedidos'
+    | 'lancamentos'
+    | 'outorgacao'
+    | 'acionistas'
+    | 'patrimonio'
+    | 'senhas'
+    | 'pix_vip'
+    | 'cadastros'
+    | 'agente_visitas'
   >('pedidos');
   const [feedback, setFeedback] = useState<string | null>(null);
 
@@ -969,6 +978,12 @@ export const AdminPanelTab: React.FC<AdminPanelTabProps> = ({
               value: `${hotels.length + courses.length + benefitPartners.length + sponsors.length} ${tr('itens', 'items')}`,
               sub: tr('Fotos, Uploads & Baixar', 'Photos, Uploads & Export'),
             },
+            {
+              id: 'agente_visitas' as const,
+              title: tr('Agente Visitas & Zap', 'Visit Agent & WhatsApp'),
+              value: 'Terminal 254',
+              sub: '(96) 98115-3517',
+            },
           ].map((tile) => (
             <button
               key={tile.id}
@@ -1024,6 +1039,7 @@ export const AdminPanelTab: React.FC<AdminPanelTabProps> = ({
               { id: 'senhas', label: tr('Gerenciador de Senhas (Executivos)', 'Password Manager (Executives)') },
               { id: 'pix_vip', label: tr('PIX & Sala VIP', 'PIX & VIP Room') },
               { id: 'cadastros', label: tr('Cadastros, Fotos & Downloads', 'Catalogs, Photos & Downloads') },
+              { id: 'agente_visitas', label: tr('Agente Visitas & Terminal 254', 'Visit Agent & Terminal 254') },
             ]
           : [
               {
@@ -4080,6 +4096,15 @@ export const AdminPanelTab: React.FC<AdminPanelTabProps> = ({
           onApproveMandateAndInsert={onApproveMandateAndInsert}
           onUpdateMandateStatus={onUpdateMandateStatus}
           onDeleteMandate={onDeleteMandate}
+        />
+      )}
+
+      {/* SECTION: Server Visit Agent, Live Region/Link Tracker & WhatsApp Alerts (Terminal 254) */}
+      {isPresidentMode && adminSection === 'agente_visitas' && (
+        <VisitAgentAdminPanel
+          isAdmin={isAdmin}
+          isPresidentMode={isPresidentMode}
+          authorizedLabel={authorizedLabel}
         />
       )}
     </div>

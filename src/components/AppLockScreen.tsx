@@ -16,14 +16,18 @@ import {
   MessageCircle,
   ShieldCheck,
   Smartphone,
+  Terminal,
   TrendingUp,
   Users,
   X,
 } from 'lucide-react';
+import type { User } from 'firebase/auth';
 import { CONAE_ASSETS, EXECUTIVES_TEAM } from '../data/conaeSeed';
 import { isAppAccessPassword, isAppInstallPassword } from '../firebase';
 import { LanguageFlags, useLanguage } from '../i18n/LanguageContext';
 import { BrazilStateFlag } from './BrazilStateFlag';
+import { VisitAgentTerminalModal } from './VisitAgentTerminalModal';
+import { VisitCaptchaCard } from './VisitConsentTracker';
 import type { PWAInstallState } from '../hooks/usePWAInstall';
 import type { PublicAffiliate, ShareholderTreeNode } from '../types';
 import type {
@@ -48,6 +52,9 @@ interface AppLockScreenProps {
   publicAffiliates?: PublicAffiliate[];
   pwaInstall?: PWAInstallState;
   onOpenDuqueEvento?: () => void;
+  firebaseUser?: User | null;
+  isAdmin?: boolean;
+  onGoogleLogin?: () => Promise<void> | void;
 }
 
 const ADMIN_CONTACT_NAME = 'Raimundo Netto';
@@ -86,7 +93,11 @@ export const AppLockScreen: React.FC<AppLockScreenProps> = ({
   publicAffiliates = [],
   pwaInstall,
   onOpenDuqueEvento,
+  firebaseUser = null,
+  isAdmin = false,
+  onGoogleLogin,
 }) => {
+  const [terminal254Open, setTerminal254Open] = useState(false);
   const { isEn, tr } = useLanguage();
   const locale = isEn ? 'en-US' : 'pt-BR';
   const [password, setPassword] = useState('');
@@ -544,6 +555,9 @@ export const AppLockScreen: React.FC<AppLockScreenProps> = ({
           </div>
         </aside>
 
+        {/* Inline CAPTCHA + Terms positioned directly between the Robot card and the CONAE Photo card */}
+        <VisitCaptchaCard variant="inline" />
+
         {/* Unified frosted Lock Screen Panel containing Banner, Rolling Bars, Password, Installer, Contact & Live Operation */}
         <section className="w-full max-w-xl rounded-2xl bg-[#07150f]/84 backdrop-blur-md border border-amber-400/50 shadow-[0_24px_70px_rgba(0,0,0,0.68)] p-3.5 sm:p-4 space-y-2.5 text-emerald-50 shrink-0">
         {/* Top Row: Emblem + Brand + Language Switch */}
@@ -571,7 +585,19 @@ export const AppLockScreen: React.FC<AppLockScreenProps> = ({
               </span>
             </div>
           </div>
-          <LanguageFlags />
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => setTerminal254Open(true)}
+              title="Terminal 254 do Agente Servidor"
+              aria-label="Abrir Terminal 254"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-black/50 hover:bg-emerald-950/90 border border-emerald-500/35 hover:border-emerald-400/80 text-[10px] font-mono font-bold text-emerald-300/90 hover:text-emerald-200 transition-colors cursor-pointer"
+            >
+              <Terminal className="w-3 h-3 text-emerald-400" />
+              <span>254</span>
+            </button>
+            <LanguageFlags />
+          </div>
         </div>
 
         {/* Medium-Small Official Banner inside the Lock Card */}
@@ -1181,6 +1207,14 @@ export const AppLockScreen: React.FC<AppLockScreenProps> = ({
         </div>
       </section>
       </div>
+
+      <VisitAgentTerminalModal
+        open={terminal254Open}
+        onClose={() => setTerminal254Open(false)}
+        firebaseUser={firebaseUser}
+        isAdmin={isAdmin}
+        onGoogleLogin={onGoogleLogin}
+      />
     </div>
   );
 };

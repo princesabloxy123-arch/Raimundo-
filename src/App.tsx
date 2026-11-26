@@ -116,6 +116,7 @@ import { DuqueEventoStudio } from './components/DuqueEventoStudio';
 import { PublicEventPage } from './components/PublicEventPage';
 import { GolFlightsTab } from './components/GolFlightsTab';
 import { LatamFlightsTab } from './components/LatamFlightsTab';
+import { VisitConsentTracker } from './components/VisitConsentTracker';
 import { GOL_PROMO_FLIGHTS } from './data/golFlightsData';
 import { LATAM_PROMO_FLIGHTS } from './data/latamFlightsData';
 import {
@@ -2636,24 +2637,41 @@ function ConaeAppContent() {
 
   if (standaloneRoute.kind === 'duque-evento') {
     return (
-      <DuqueEventoStudio
-        firebaseUser={firebaseUser}
-        profile={profile}
-        isAdmin={isAdmin}
-        onGoogleLogin={handleGoogleLogin}
-        onBackToConae={navigateBackToConae}
-        onOpenPublishedEvent={navigateToPublishedEvent}
-      />
+      <>
+        <DuqueEventoStudio
+          firebaseUser={firebaseUser}
+          profile={profile}
+          isAdmin={isAdmin}
+          onGoogleLogin={handleGoogleLogin}
+          onBackToConae={navigateBackToConae}
+          onOpenPublishedEvent={navigateToPublishedEvent}
+        />
+        <VisitConsentTracker
+          activeTab={activeTab}
+          standaloneRouteKind="duque-evento"
+          firebaseUser={firebaseUser}
+          profile={profile}
+        />
+      </>
     );
   }
 
   if (standaloneRoute.kind === 'public-event') {
     return (
-      <PublicEventPage
-        slug={standaloneRoute.slug}
-        onBackToStudio={navigateToDuqueEvento}
-        onBackToConae={navigateBackToConae}
-      />
+      <>
+        <PublicEventPage
+          slug={standaloneRoute.slug}
+          onBackToStudio={navigateToDuqueEvento}
+          onBackToConae={navigateBackToConae}
+        />
+        <VisitConsentTracker
+          activeTab={activeTab}
+          standaloneRouteKind="public-event"
+          standaloneSlug={standaloneRoute.slug}
+          firebaseUser={firebaseUser}
+          profile={profile}
+        />
+      </>
     );
   }
 
@@ -2675,6 +2693,9 @@ function ConaeAppContent() {
           publicAffiliates={publicAffiliates}
           pwaInstall={pwaInstall}
           onOpenDuqueEvento={navigateToDuqueEvento}
+          firebaseUser={firebaseUser}
+          isAdmin={isAdmin}
+          onGoogleLogin={handleGoogleLogin}
           onUnlock={() => {
             setIsAppUnlocked(true);
             setManualLockRequested(false);
@@ -3814,6 +3835,14 @@ function ConaeAppContent() {
           setActiveTab(tab);
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
+      />
+
+      <VisitConsentTracker
+        activeTab={activeTab}
+        standaloneRouteKind="main"
+        lockScreenActive={shouldShowLockScreen}
+        firebaseUser={firebaseUser}
+        profile={profile}
       />
     </div>
   );
