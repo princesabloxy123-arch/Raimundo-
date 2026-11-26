@@ -3,6 +3,7 @@ import type { DukeStudioMode } from '../types';
 export type DukeOptionCategory =
   | 'Vídeos IA'
   | 'Fotos & Artes'
+  | 'GPS Maps'
   | 'Eventos & Links'
   | 'WhatsApp & Redes'
   | 'Igreja & Ministério'
@@ -24,16 +25,18 @@ export interface DukeCatalogOption {
 export const DUKE_OPTION_CATEGORIES: DukeOptionCategory[] = [
   'Vídeos IA',
   'Fotos & Artes',
+  'GPS Maps',
   'Eventos & Links',
+  'Códigos & Sites',
   'WhatsApp & Redes',
   'Igreja & Ministério',
   'Negócios & Vendas',
-  'Códigos & Sites',
   'Pesquisa Google',
   'Documentos Oficiais',
 ];
 
 export const DUKE_VIDEO_OPTIONS_COUNT = 500;
+export const DUKE_GPS_OPTIONS_COUNT = 175;
 
 type RawOptionSeed = [title: string, description: string, prompt: string];
 
@@ -296,7 +299,35 @@ const VIDEO_IA_SEEDS: RawOptionSeed[] = [
   ['Vídeo Vinheta de Encerramento 16:9', 'Fechamento profissional com contatos e CTA', 'Gere um vídeo de encerramento 16:9 luxuoso com agradecimento final e convite para seguir nossas redes oficiais.'],
 ];
 
-// Combinatorial matrices: 500 video options (25 seeds + 25×19 = 500) + 10,000 options across 8 categories (8 × 1,250) = 10,500 exact unique options!
+const GPS_MAPS_SEEDS: RawOptionSeed[] = [
+  ['Minha Localização GPS Agora', 'Mostra exatamente onde estou no Google Maps', 'Mostre minha localização GPS atual no Google Maps ao vivo.'],
+  ['Centro de Convenções de Goiânia', 'Localiza endereço exato e rota no GPS', 'Localize no GPS do Google Maps o Centro de Convenções de Goiânia GO.'],
+  ['Aeroporto de Goiânia (Santa Genoveva)', 'Localização e rota até o aeroporto', 'Localize no Google Maps o Aeroporto de Goiânia Santa Genoveva e prepare a rota de carro.'],
+  ['Aeroporto de Guarulhos (GRU)', 'Localização ao vivo e rota no GPS', 'Localize no GPS do Google Maps o Aeroporto Internacional de Guarulhos em São Paulo.'],
+  ['Aeroporto de Brasília (BSB)', 'Localiza terminal e traça trajeto no mapa', 'Mostre no GPS do Google Maps o Aeroporto Internacional de Brasília.'],
+  ['Avenida Paulista — São Paulo', 'Localização central com pontos próximos', 'Localize no Google Maps a Avenida Paulista em São Paulo SP.'],
+  ['Hotéis Próximos ao Centro de Goiânia', 'Encontra hospedagens reais no mapa', 'Busque no GPS do Google Maps hotéis próximos ao Centro de Goiânia GO.'],
+  ['Igrejas Próximas em Goiânia', 'Busca templos e endereços no mapa ao vivo', 'Busque no Google Maps igrejas evangélicas em Goiânia GO.'],
+  ['Hospitais e Pronto-Socorro Próximos', 'Localiza atendimento médico no GPS', 'Busque no GPS do Google Maps hospitais e pronto-socorro próximos à minha localização.'],
+  ['Farmácias 24 Horas Próximas', 'Encontra farmácias abertas no mapa', 'Localize no Google Maps farmácias 24 horas perto de mim.'],
+  ['Postos de Combustível Próximos', 'Mostra postos na região pelo GPS', 'Localize no GPS do Google Maps postos de combustível próximos.'],
+  ['Restaurantes Bem Avaliados Próximos', 'Busca restaurantes reais no Google Maps', 'Encontre restaurantes bem avaliados perto de mim no Google Maps.'],
+  ['Rota Goiânia → Brasília de Carro', 'Traça rota completa com tempo e distância', 'Trace a rota de carro no GPS do Google Maps de Goiânia GO até Brasília DF.'],
+  ['Rota São Paulo → Rio de Janeiro', 'Caminho completo no mapa GPS', 'Trace a rota de carro no Google Maps de São Paulo SP até Rio de Janeiro RJ.'],
+  ['Rota Goiânia → Caldas Novas', 'Trajeto turístico com distância e tempo', 'Trace a rota de carro no GPS do Google Maps de Goiânia GO até Caldas Novas GO.'],
+  ['Rodoviária de Goiânia', 'Localiza terminal rodoviário no mapa', 'Mostre no GPS do Google Maps a Rodoviária de Goiânia GO.'],
+  ['Shopping Flamboyant — Goiânia', 'Localização e rota até o shopping', 'Localize no Google Maps o Flamboyant Shopping Center em Goiânia GO.'],
+  ['Esplanada dos Ministérios — Brasília', 'Ponto oficial no mapa interativo', 'Mostre no GPS do Google Maps a Esplanada dos Ministérios em Brasília DF.'],
+  ['Cristo Redentor — Rio de Janeiro', 'Ponto turístico com rota no GPS', 'Localize no Google Maps o Cristo Redentor no Rio de Janeiro RJ.'],
+  ['Praia de Copacabana — Rio de Janeiro', 'Localização exata na orla pelo GPS', 'Mostre no Google Maps a Praia de Copacabana no Rio de Janeiro RJ.'],
+  ['Cataratas do Iguaçu — Foz do Iguaçu', 'Parque Nacional no mapa ao vivo', 'Localize no GPS do Google Maps as Cataratas do Iguaçu em Foz do Iguaçu PR.'],
+  ['Gramado — Serra Gaúcha (RS)', 'Centro turístico no Google Maps', 'Mostre no GPS do Google Maps o centro de Gramado no Rio Grande do Sul.'],
+  ['Bancos e Caixas Eletrônicos Próximos', 'Encontra agências perto de você', 'Busque no GPS do Google Maps agências bancárias e caixas eletrônicos próximos.'],
+  ['Supermercados Próximos no GPS', 'Localiza mercados na sua região', 'Encontre supermercados próximos no GPS do Google Maps.'],
+  ['Estacionamentos Próximos no Mapa', 'Mostra estacionamentos disponíveis', 'Localize estacionamentos próximos no GPS do Google Maps.'],
+];
+
+// Combinatorial matrices: 500 video options + 175 GPS Maps options + 10,000 options across 8 categories = 10,675 unique options!
 interface CategoryMatrix {
   category: DukeOptionCategory;
   mode: DukeStudioMode;
@@ -364,6 +395,44 @@ const MATRICES: CategoryMatrix[] = [
     makeDescription: (base, mod) => `Vídeo HD com 4 cenas animadas e trilha: ${base} — ${mod}`,
     makePrompt: (base, mod) =>
       `Analise este pedido e gere um vídeo animado HD completo em 4 cenas com trilha musical e narração em português: "${base} — ${mod}".`,
+  },
+  {
+    category: 'GPS Maps',
+    mode: 'gps',
+    seeds: GPS_MAPS_SEEDS,
+    // 15 bases × 10 cities = 150 + 25 seeds = 175 GPS Maps options
+    bases: [
+      'Hotéis no GPS em',
+      'Centros de Convenções em',
+      'Aeroporto e Rota em',
+      'Igrejas e Templos em',
+      'Restaurantes no Mapa em',
+      'Hospitais e Clínicas em',
+      'Shoppings e Comércio em',
+      'Pontos Turísticos em',
+      'Rodoviária e Transporte em',
+      'Farmácias 24h em',
+      'Postos de Combustível em',
+      'Auditórios para Eventos em',
+      'Praças e Parques em',
+      'Bancos e Caixas em',
+      'Rota de Carro até',
+    ],
+    modifiers: [
+      'Goiânia GO',
+      'Brasília DF',
+      'São Paulo SP',
+      'Rio de Janeiro RJ',
+      'Belo Horizonte MG',
+      'Curitiba PR',
+      'Salvador BA',
+      'Fortaleza CE',
+      'Recife PE',
+      'Porto Alegre RS',
+    ],
+    makeDescription: (base, mod) => `Busca ao vivo no Google Maps GPS: ${base} ${mod}`,
+    makePrompt: (base, mod) =>
+      `Use o GPS do Google Maps para localizar e mostrar no mapa: "${base} ${mod}".`,
   },
   {
     category: 'Fotos & Artes',

@@ -18,11 +18,22 @@ async function startServer() {
     res.json({ ok: true, service: 'conae-duque-evento' });
   });
 
+  app.get('/api/maps-config', (_req, res) => {
+    const apiKey = (
+      process.env.VITE_GOOGLE_MAPS_API_KEY ||
+      process.env.GOOGLE_MAPS_API_KEY ||
+      process.env.GOOGLE_MAPS_PLATFORM_KEY ||
+      ''
+    ).trim();
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json({ apiKey });
+  });
+
   app.get('/api/duke-evento/chat', (_req, res) => {
     res.status(200).json({
       ok: true,
       service: 'conae-duque-evento',
-      modes: ['auto', 'chat', 'image', 'event'],
+      modes: ['auto', 'chat', 'image', 'event', 'video', 'gps'],
     });
   });
 

@@ -1009,7 +1009,50 @@ export const DukeGpsMapPanel: React.FC<DukeGpsMapPanelProps> = ({
   incomingRequest,
   onAskRobotAboutPlace,
 }) => {
-  if (!GOOGLE_MAPS_API_KEY) {
+  const [resolvedApiKey, setResolvedApiKey] = useState<string>(GOOGLE_MAPS_API_KEY);
+  const [checkingKey, setCheckingKey] = useState<boolean>(!GOOGLE_MAPS_API_KEY);
+
+  useEffect(() => {
+    if (GOOGLE_MAPS_API_KEY) {
+      setResolvedApiKey(GOOGLE_MAPS_API_KEY);
+      setCheckingKey(false);
+      return;
+    }
+
+    let cancelled = false;
+    setCheckingKey(true);
+
+    fetch('/api/maps-config', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { apiKey?: string } | null) => {
+        if (!cancelled && data?.apiKey && typeof data.apiKey === 'string') {
+          setResolvedApiKey(data.apiKey.trim());
+        }
+      })
+      .catch(() => {
+        // Fallback to setup instructions if runtime config endpoint is unavailable
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setCheckingKey(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (checkingKey) {
+    return (
+      <div className="max-w-xl mx-auto rounded-2xl bg-[#07150f] border border-amber-400/35 p-6 text-center space-y-3">
+        <Loader2 className="w-7 h-7 text-amber-300 animate-spin mx-auto" />
+        <p className="text-xs text-emerald-200/80">Conectando ao GPS Google Maps...</p>
+      </div>
+    );
+  }
+
+  if (!resolvedApiKey) {
     return (
       <div className="max-w-xl mx-auto rounded-2xl bg-[#07150f] border border-amber-400/35 p-6 text-center space-y-3">
         <div className="w-12 h-12 rounded-2xl bg-amber-400/15 border border-amber-400/40 text-amber-300 flex items-center justify-center mx-auto">
@@ -1017,14 +1060,15 @@ export const DukeGpsMapPanel: React.FC<DukeGpsMapPanelProps> = ({
         </div>
         <h2 className="font-display text-lg font-bold text-white">GPS Google Maps</h2>
         <p className="text-xs text-emerald-200/80 leading-relaxed">
-          Configure a variável de ambiente <code className="font-mono text-amber-300">VITE_GOOGLE_MAPS_API_KEY</code> para carregar o mapa GPS interativo do Google Maps.
+          Para usar o GPS fora do ambiente de teste, adicione a variável de ambiente{' '}
+          <code className="font-mono text-amber-300">VITE_GOOGLE_MAPS_API_KEY</code> nas configurações da sua hospedagem (ex.: Vercel → Settings → Environment Variables) com sua chave do Google Maps Platform e faça um novo deploy.
         </p>
       </div>
     );
   }
 
   return (
-    <APIProvider apiKey={GOOGLE_MAPS_API_KEY} language="pt-BR" region="BR">
+    <APIProvider apiKey={resolvedApiKey} language="pt-BR" region="BR">
       <GpsInteractiveWorkspace
         incomingRequest={incomingRequest}
         onAskRobotAboutPlace={onAskRobotAboutPlace}

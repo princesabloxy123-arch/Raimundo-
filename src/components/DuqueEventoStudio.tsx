@@ -84,6 +84,7 @@ import type {
 } from '../types';
 import {
   DUKE_10000_OPTIONS,
+  DUKE_GPS_OPTIONS_COUNT,
   DUKE_OPTION_CATEGORIES,
   DUKE_VIDEO_OPTIONS_COUNT,
   type DukeCatalogOption,
@@ -267,10 +268,12 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
 
   const [show200Catalog, setShow200Catalog] = useState(true);
-  const [catalogCategory, setCatalogCategory] = useState<'Todas' | DukeOptionCategory>('Todas');
+  const [catalogCategory, setCatalogCategory] = useState<'Todas' | 'Texto & Código' | DukeOptionCategory>('Todas');
   const [catalogSearch, setCatalogSearch] = useState('');
   const [catalogScrollTop, setCatalogScrollTop] = useState(0);
   const catalogListRef = useRef<HTMLDivElement | null>(null);
+  const catalogCardRef = useRef<HTMLDivElement | null>(null);
+  const categoryTabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const CATALOG_ROW_HEIGHT = 68;
   const CATALOG_VIEWPORT_HEIGHT = 340;
@@ -282,7 +285,11 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase();
     return DUKE_10000_OPTIONS.filter((item) => {
-      if (catalogCategory !== 'Todas' && item.category !== catalogCategory) return false;
+      if (catalogCategory === 'Texto & Código') {
+        if (item.mode !== 'chat') return false;
+      } else if (catalogCategory !== 'Todas' && item.category !== catalogCategory) {
+        return false;
+      }
       if (!q) return true;
       return item.searchText.includes(q);
     });
@@ -293,7 +300,67 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
     if (catalogListRef.current) {
       catalogListRef.current.scrollTop = 0;
     }
+    const activeTabEl = categoryTabRefs.current[catalogCategory];
+    if (activeTabEl) {
+      activeTabEl.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    }
   }, [catalogCategory, catalogSearch]);
+
+  const handleSelectBottomMode = (nextMode: DukeStudioMode) => {
+    setStudioMode(nextMode);
+    setCatalogSearch('');
+    setShow200Catalog(true);
+
+    const mappedCategory: 'Todas' | 'Texto & Código' | DukeOptionCategory =
+      nextMode === 'video'
+        ? 'Vídeos IA'
+        : nextMode === 'image'
+          ? 'Fotos & Artes'
+          : nextMode === 'gps'
+            ? 'GPS Maps'
+            : nextMode === 'event'
+              ? 'Eventos & Links'
+              : nextMode === 'chat'
+                ? 'Texto & Código'
+                : 'Todas';
+
+    setCatalogCategory(mappedCategory);
+    setCatalogScrollTop(0);
+
+    if (nextMode === 'gps') {
+      setRightTab('gps');
+    } else if (nextMode === 'video') {
+      setRightTab('video');
+    } else if (nextMode === 'image') {
+      setRightTab('image');
+    } else if (nextMode === 'event') {
+      setRightTab('preview');
+    }
+
+    window.setTimeout(() => {
+      if (catalogListRef.current) {
+        catalogListRef.current.scrollTop = 0;
+      }
+      catalogCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 60);
+  };
+
+  const handleSelectCatalogCategory = (nextCat: 'Todas' | 'Texto & Código' | DukeOptionCategory) => {
+    setCatalogCategory(nextCat);
+    if (nextCat === 'Todas') {
+      setStudioMode('auto');
+    } else if (nextCat === 'Vídeos IA') {
+      setStudioMode('video');
+    } else if (nextCat === 'Fotos & Artes') {
+      setStudioMode('image');
+    } else if (nextCat === 'GPS Maps') {
+      setStudioMode('gps');
+    } else if (nextCat === 'Eventos & Links') {
+      setStudioMode('event');
+    } else {
+      setStudioMode('chat');
+    }
+  };
 
   const virtualCatalogWindow = useMemo(() => {
     const total = filteredCatalogOptions.length;
@@ -1868,22 +1935,23 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
               </div>
             ))}
 
-            {/* Scrollable 10,500-Option 1-Click Virtualized Catalog (500 AI Video Options + 10,000 Options, all convertible to Video) */}
+            {/* Scrollable 10,675-Option 1-Click Virtualized Catalog synced with bottom mode buttons */}
             {show200Catalog && !sending && (
-              <div className="pt-1">
+              <div ref={catalogCardRef} className="pt-1">
                 <div className="rounded-2xl bg-[#071610] border border-amber-400/40 p-3 space-y-2.5 shadow-lg">
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
                       <p className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
                         <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                        <span>
-                          {DUKE_VIDEO_OPTIONS_COUNT} Vídeos IA + 10.000 Opções Prontas — 1 Clique
+                        <span className="truncate">
+                          {catalogCategory === 'Todas'
+                            ? `${DUKE_10000_OPTIONS.length.toLocaleString('pt-BR')} Opções Prontas — 1 Clique`
+                            : `${catalogCategory} (${filteredCatalogOptions.length.toLocaleString('pt-BR')} opções)`}
                         </span>
                       </p>
                       <p className="text-[10px] text-emerald-200/75">
                         Role para ler ({filteredCatalogOptions.length.toLocaleString('pt-BR')} de{' '}
-                        {DUKE_10000_OPTIONS.length.toLocaleString('pt-BR')}) · Clique em <strong>Fazer</strong> ou{' '}
-                        <strong>Vídeo</strong> em qualquer opção
+                        {DUKE_10000_OPTIONS.length.toLocaleString('pt-BR')}) · Toque nas opções abaixo para trocar a lista
                       </p>
                     </div>
                     {messages.length > 1 && (
@@ -1905,7 +1973,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                       type="text"
                       value={catalogSearch}
                       onChange={(e) => setCatalogSearch(e.target.value)}
-                      placeholder="Filtrar 500 vídeos + 10.000 opções (ex: vídeo reels, foto, convite, igreja, loja)..."
+                      placeholder="Filtrar opções (ex: vídeo, foto, gps, rota, convite, igreja, código)..."
                       className="w-full rounded-xl bg-black/55 border border-amber-400/25 focus:border-amber-400 pl-8 pr-7 py-1.5 text-xs text-white placeholder:text-emerald-200/45 focus:outline-none"
                     />
                     {catalogSearch && (
@@ -1923,8 +1991,11 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                   {/* Category Tabs (Horizontal Scroll) */}
                   <div className="flex items-center gap-1.5 overflow-x-auto conae-scroll pb-0.5">
                     <button
+                      ref={(el) => {
+                        categoryTabRefs.current['Todas'] = el;
+                      }}
                       type="button"
-                      onClick={() => setCatalogCategory('Todas')}
+                      onClick={() => handleSelectCatalogCategory('Todas')}
                       className={`px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap cursor-pointer transition-colors ${
                         catalogCategory === 'Todas'
                           ? 'bg-amber-400 text-neutral-950'
@@ -1933,22 +2004,43 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                     >
                       Todas ({DUKE_10000_OPTIONS.length.toLocaleString('pt-BR')})
                     </button>
+                    <button
+                      ref={(el) => {
+                        categoryTabRefs.current['Texto & Código'] = el;
+                      }}
+                      type="button"
+                      onClick={() => handleSelectCatalogCategory('Texto & Código')}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap cursor-pointer transition-colors ${
+                        catalogCategory === 'Texto & Código'
+                          ? 'bg-amber-400 text-neutral-950'
+                          : 'bg-black/50 text-emerald-100/80 border border-amber-400/20 hover:border-amber-400/50'
+                      }`}
+                    >
+                      Texto & Código
+                    </button>
                     {DUKE_OPTION_CATEGORIES.map((cat) => (
                       <button
                         key={cat}
+                        ref={(el) => {
+                          categoryTabRefs.current[cat] = el;
+                        }}
                         type="button"
-                        onClick={() => setCatalogCategory(cat)}
+                        onClick={() => handleSelectCatalogCategory(cat)}
                         className={`px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap cursor-pointer transition-colors ${
                           catalogCategory === cat
-                            ? cat === 'Vídeos IA'
+                            ? cat === 'Vídeos IA' || cat === 'GPS Maps'
                               ? 'bg-amber-400 text-neutral-950'
                               : 'bg-emerald-600 text-white'
-                            : cat === 'Vídeos IA'
+                            : cat === 'Vídeos IA' || cat === 'GPS Maps'
                               ? 'bg-amber-400/15 text-amber-200 border border-amber-400/45 hover:bg-amber-400/25'
                               : 'bg-black/50 text-emerald-100/80 border border-amber-400/20 hover:border-amber-400/50'
                         }`}
                       >
-                        {cat === 'Vídeos IA' ? `Vídeos IA (${DUKE_VIDEO_OPTIONS_COUNT})` : cat}
+                        {cat === 'Vídeos IA'
+                          ? `Vídeos IA (${DUKE_VIDEO_OPTIONS_COUNT})`
+                          : cat === 'GPS Maps'
+                            ? `GPS Maps (${DUKE_GPS_OPTIONS_COUNT})`
+                            : cat}
                       </button>
                     ))}
                   </div>
@@ -2002,6 +2094,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                         {virtualCatalogWindow.items.map((item, offsetIdx) => {
                           const realIndex = virtualCatalogWindow.startIdx + offsetIdx;
                           const isVideoItem = item.mode === 'video';
+                          const isGpsItem = item.mode === 'gps';
                           return (
                             <div
                               key={item.id}
@@ -2033,7 +2126,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                                   </p>
                                 </button>
                                 <div className="flex items-center gap-1 shrink-0">
-                                  {!isVideoItem && (
+                                  {!isVideoItem && !isGpsItem && (
                                     <button
                                       type="button"
                                       disabled={sending || renderingVideo}
@@ -2052,7 +2145,8 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                                     className="px-2.5 py-1 rounded-lg bg-amber-400/20 hover:bg-amber-400 text-amber-300 hover:text-neutral-950 font-bold text-[10px] cursor-pointer transition-colors disabled:opacity-50 inline-flex items-center gap-1"
                                   >
                                     {isVideoItem && <Film className="w-3 h-3" />}
-                                    <span>{isVideoItem ? 'Criar Vídeo' : 'Fazer'}</span>
+                                    {isGpsItem && <MapPin className="w-3 h-3" />}
+                                    <span>{isVideoItem ? 'Criar Vídeo' : isGpsItem ? 'Abrir GPS' : 'Fazer'}</span>
                                   </button>
                                 </div>
                               </div>
@@ -2103,7 +2197,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
             <div ref={chatEndRef} />
           </div>
 
-          {/* Mode Switcher Bar + 200 Opções Toggle Button */}
+          {/* Mode Switcher Bar + Opções Toggle Button (Synced with Scrollable Bar) */}
           <div className="px-3 pt-2.5 pb-1.5 border-t border-amber-400/20 bg-[#040b08] flex items-center gap-1.5 overflow-x-auto conae-scroll">
             <button
               type="button"
@@ -2112,7 +2206,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                   const next = !prev;
                   if (next) {
                     window.setTimeout(() => {
-                      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+                      catalogCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                     }, 60);
                   }
                   return next;
@@ -2125,20 +2219,13 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
               }`}
             >
               <Sparkles className="w-3 h-3 shrink-0" />
-              <span>10.500 Opções</span>
+              <span>{DUKE_10000_OPTIONS.length.toLocaleString('pt-BR')} Opções</span>
             </button>
             {MODE_OPTIONS.map((opt) => (
               <button
                 key={opt.id}
                 type="button"
-                onClick={() => {
-                  setStudioMode(opt.id);
-                  if (opt.id === 'gps') {
-                    setRightTab('gps');
-                  } else if (opt.id === 'video') {
-                    setRightTab('video');
-                  }
-                }}
+                onClick={() => handleSelectBottomMode(opt.id)}
                 className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap cursor-pointer transition-colors ${
                   studioMode === opt.id
                     ? 'bg-amber-400 text-neutral-950'
