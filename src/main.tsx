@@ -2,7 +2,7 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
-// Tier 1 Google Maps Platform quota defense (Demo Key)
+// Tier 1 Google Maps Platform quota & auth listener
 (window as unknown as { gm_authFailure?: () => void }).gm_authFailure = () => {
   window.dispatchEvent(new CustomEvent('gmp-quota-exceeded'));
 };
@@ -16,4 +16,3 @@ console.error = (...args: unknown[]) => {
 };
 
 createRoot(document.getElementById('root')!).render(<App />);
-

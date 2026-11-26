@@ -19,10 +19,10 @@ async function startServer() {
   });
 
   app.get('/api/maps-config', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
     const apiKey = (
       process.env.VITE_GOOGLE_MAPS_API_KEY ||
       process.env.GOOGLE_MAPS_API_KEY ||
-      process.env.GOOGLE_MAPS_PLATFORM_KEY ||
       ''
     ).trim();
     const recaptchaSiteKey = (
@@ -30,8 +30,12 @@ async function startServer() {
       process.env.RECAPTCHA_ENTERPRISE_SITE_KEY ||
       ''
     ).trim();
-    res.setHeader('Cache-Control', 'no-store');
-    res.status(200).json({ apiKey, recaptchaSiteKey });
+    res.status(200).json({
+      ok: true,
+      configured: Boolean(apiKey),
+      apiKey,
+      recaptchaSiteKey,
+    });
   });
 
   app.get('/api/duke-evento/chat', (_req, res) => {

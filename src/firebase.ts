@@ -15,45 +15,39 @@ export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
 let cachedAppCheck: AppCheck | null = null;
-let cachedAppCheckKey = '';
+let cachedAppCheckSiteKey = '';
 
-const INVALID_RECAPTCHA_PLACEHOLDERS = new Set([
-  '',
-  'abcdefghijklmnopqrstuvwxy-1234567890abcd',
-  'MY_RECAPTCHA_ENTERPRISE_SITE_KEY',
-  'YOUR_RECAPTCHA_ENTERPRISE_SITE_KEY',
-]);
+export function getOrInitFirebaseAppCheck(siteKey?: string): AppCheck | null {
+  const effectiveSiteKey = (
+    siteKey ||
+    import.meta.env.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY ||
+    ''
+  ).trim();
+  if (!effectiveSiteKey || typeof window === 'undefined') return null;
 
-export function getOrInitFirebaseAppCheck(siteKey: string): AppCheck | null {
-  const cleanKey = (siteKey || '').trim();
-  if (!cleanKey || INVALID_RECAPTCHA_PLACEHOLDERS.has(cleanKey)) {
-    return null;
-  }
-  if (cachedAppCheck && cachedAppCheckKey === cleanKey) {
+  if (cachedAppCheck && cachedAppCheckSiteKey === effectiveSiteKey) {
     return cachedAppCheck;
   }
-  if (cachedAppCheck) {
-    return cachedAppCheck;
-  }
+
   try {
     cachedAppCheck = initializeAppCheck(app, {
-      provider: new ReCaptchaEnterpriseProvider(cleanKey),
+      provider: new ReCaptchaEnterpriseProvider(effectiveSiteKey),
       isTokenAutoRefreshEnabled: true,
     });
-    cachedAppCheckKey = cleanKey;
+    cachedAppCheckSiteKey = effectiveSiteKey;
     return cachedAppCheck;
   } catch (err) {
-    console.warn('[Firebase App Check] Initialization skipped:', err);
+    console.warn('[Firebase App Check] Failed to initialize:', err);
     return null;
   }
 }
 
 export function createMapsAppCheckTokenFetcher(
-  siteKey: string
-): (() => Promise<{ token: string }>) | undefined {
-  const appCheckInstance = getOrInitFirebaseAppCheck(siteKey);
-  if (!appCheckInstance) return undefined;
-  return () => getToken(appCheckInstance, false);
+  siteKey?: string
+): (() => Promise<{ token: string }>) | null {
+  const appCheck = getOrInitFirebaseAppCheck(siteKey);
+  if (!appCheck) return null;
+  return () => getToken(appCheck, false);
 }
 
 export const BOOTSTRAPPED_ADMIN_EMAIL = 'princesabloxy123@gmail.com';

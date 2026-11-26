@@ -1,7 +1,8 @@
+/// <reference types="google.maps" />
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  APIProvider,
   AdvancedMarker,
+  APIProvider,
   InfoWindow,
   Map as GoogleMap,
   Pin,
@@ -9,6 +10,7 @@ import {
   useMapsLibrary,
 } from '@vis.gl/react-google-maps';
 import {
+  AlertCircle,
   Bike,
   Bus,
   Car,
@@ -21,92 +23,61 @@ import {
   Navigation,
   Route as RouteIcon,
   Search,
+  ShieldCheck,
   Star,
   X,
 } from 'lucide-react';
 import { createMapsAppCheckTokenFetcher } from '../firebase';
 import type { DukeGpsRequest, DukeGpsTravelMode } from '../types';
 
-const GOOGLE_MAPS_API_KEY = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '').trim();
-const RECAPTCHA_ENTERPRISE_SITE_KEY = (import.meta.env.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY || '').trim();
-const GMP_ATTRIBUTION_ID = 'gmp_mcp_codeassist_v1_aistudio';
-const DEFAULT_GPS_CENTER = { lat: 0.0349, lng: -51.0694 };
-const DEFAULT_GPS_ZOOM = 13;
-const DEFAULT_PIN_PLACE: GpsPlaceResult = {
-  id: 'default_pinned_point',
-  displayName: 'Ponto no mapa',
-  formattedAddress: '0.0349, -51.0694',
-  location: DEFAULT_GPS_CENTER,
-};
-
-type GmpLatLngLike =
-  | { lat: number; lng: number }
-  | { lat: () => number; lng: () => number };
-
-interface GmpPolylineLike {
-  setMap: (map: unknown) => void;
-  setOptions: (options: Record<string, unknown>) => void;
+interface DukeGpsMapPanelProps {
+  gpsRequest: DukeGpsRequest | null;
+  onRequestChange?: (next: DukeGpsRequest) => void;
 }
 
-interface GmpPlaceLike {
-  id?: string | null;
-  displayName?: string | null;
-  formattedAddress?: string | null;
-  location?: GmpLatLngLike | null;
-  viewport?: unknown;
-  rating?: number | null;
-  userRatingCount?: number | null;
-  googleMapsURI?: string | null;
-  businessStatus?: string | null;
-  fetchFields: (opts: { fields: string[] }) => Promise<unknown>;
-}
-
-interface GpsPlaceResult {
-  id: string;
-  displayName: string;
-  formattedAddress: string;
+interface ResolvedPlaceInfo {
+  id?: string;
+  name: string;
+  address: string;
   location: { lat: number; lng: number };
-  rating?: number | null;
-  userRatingCount?: number | null;
-  googleMapsURI?: string | null;
-  businessStatus?: string | null;
+  rating?: number;
+  userRatingCount?: number;
+  googleMapsURI?: string;
+  websiteURI?: string;
+  nationalPhoneNumber?: string;
 }
 
-interface GpsRouteSummary {
+interface ComputedRouteSummary {
+  distanceMeters: number;
+  durationMillis: number;
   originLabel: string;
   destinationLabel: string;
   travelMode: DukeGpsTravelMode;
-  distanceMeters: number;
-  durationMillis: number;
-  googleMapsDirUrl: string;
 }
 
-interface DukeGpsMapPanelProps {
-  incomingRequest: DukeGpsRequest | null;
-  onAskRobotAboutPlace?: (prompt: string) => void;
-}
-
-interface GpsWorkspaceInternalProps extends DukeGpsMapPanelProps {
-  fetchAppCheckToken?: () => Promise<{ token: string }>;
-}
+const DEFAULT_CENTER = { lat: 0.0349, lng: -51.0694 }; // Macapá, AP
+const DEFAULT_ZOOM = 13;
+const DEFAULT_PLACE: ResolvedPlaceInfo = {
+  name: 'Ponto no mapa — Macapá, AP',
+  address: 'Macapá, Amapá, Brasil',
+  location: DEFAULT_CENTER,
+};
 
 function isQuotaError(err: unknown): boolean {
-  const raw = err instanceof Error ? err.message : String(err ?? '');
+  const text = err instanceof Error ? `${err.name} ${err.message}` : String(err ?? '');
   return (
-    raw.includes('RESOURCE_EXHAUSTED') ||
-    raw.includes('OVER_QUERY_LIMIT') ||
-    raw.includes('OverQuotaMapError') ||
-    raw.includes('QuotaExceededError') ||
-    raw.includes('429')
+    text.includes('RESOURCE_EXHAUSTED') ||
+    text.includes('OVER_QUERY_LIMIT') ||
+    text.includes('OverQuotaMapError') ||
+    text.includes('QuotaExceededError') ||
+    text.includes('429')
   );
 }
 
-function triggerQuotaBannerIfNeeded(err: unknown): boolean {
+function triggerQuotaNoticeIfNeeded(err: unknown): void {
   if (isQuotaError(err)) {
     window.dispatchEvent(new CustomEvent('gmp-quota-exceeded'));
-    return true;
   }
-  return false;
 }
 
 function formatDistance(meters: number): string {
@@ -115,617 +86,704 @@ function formatDistance(meters: number): string {
   return `${(meters / 1000).toFixed(1).replace('.', ',')} km`;
 }
 
-function formatDuration(millis: number): string {
-  if (!Number.isFinite(millis) || millis <= 0) return '—';
-  const totalMinutes = Math.max(1, Math.round(millis / 60000));
-  if (totalMinutes < 60) return `${totalMinutes} min`;
-  const hours = Math.floor(totalMinutes / 60);
-  const mins = totalMinutes % 60;
+function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return '—';
+  const totalMin = Math.max(1, Math.round(ms / 60000));
+  if (totalMin < 60) return `${totalMin} min`;
+  const hours = Math.floor(totalMin / 60);
+  const mins = totalMin % 60;
   return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
 }
 
-function mapTravelModeToGoogleMapsParam(mode: DukeGpsTravelMode): string {
-  switch (mode) {
-    case 'WALKING':
-      return 'walking';
-    case 'BICYCLING':
-      return 'bicycling';
-    case 'TRANSIT':
-      return 'transit';
-    default:
-      return 'driving';
-  }
-}
-
-function extractLatLng(loc: GmpLatLngLike | null | undefined): { lat: number; lng: number } | null {
+function extractLatLng(
+  loc: google.maps.LatLng | google.maps.LatLngLiteral | null | undefined
+): { lat: number; lng: number } | null {
   if (!loc) return null;
-  const lat = typeof loc.lat === 'function' ? loc.lat() : loc.lat;
-  const lng = typeof loc.lng === 'function' ? loc.lng() : loc.lng;
-  if (typeof lat === 'number' && typeof lng === 'number' && Number.isFinite(lat) && Number.isFinite(lng)) {
-    return { lat, lng };
+  if (typeof (loc as google.maps.LatLng).lat === 'function') {
+    const ll = loc as google.maps.LatLng;
+    return { lat: ll.lat(), lng: ll.lng() };
+  }
+  const lit = loc as google.maps.LatLngLiteral;
+  if (typeof lit.lat === 'number' && typeof lit.lng === 'number') {
+    return { lat: lit.lat, lng: lit.lng };
   }
   return null;
 }
 
-const TRAVEL_MODES: Array<{ id: DukeGpsTravelMode; label: string; icon: React.ReactNode }> = [
-  { id: 'DRIVING', label: 'Carro', icon: <Car className="w-3.5 h-3.5" /> },
-  { id: 'WALKING', label: 'A pé', icon: <Footprints className="w-3.5 h-3.5" /> },
-  { id: 'TRANSIT', label: 'Transporte', icon: <Bus className="w-3.5 h-3.5" /> },
-  { id: 'BICYCLING', label: 'Bike', icon: <Bike className="w-3.5 h-3.5" /> },
+const TRAVEL_MODES: Array<{ id: DukeGpsTravelMode; label: string; Icon: React.ComponentType<{ className?: string }> }> = [
+  { id: 'DRIVING', label: 'Carro', Icon: Car },
+  { id: 'WALKING', label: 'A pé', Icon: Footprints },
+  { id: 'BICYCLING', label: 'Bike', Icon: Bike },
+  { id: 'TRANSIT', label: 'Ônibus', Icon: Bus },
 ];
 
-const GpsInteractiveWorkspace: React.FC<GpsWorkspaceInternalProps> = ({
-  incomingRequest,
-  onAskRobotAboutPlace,
-  fetchAppCheckToken,
-}) => {
-  const map = useMap('duke-gps-map');
+interface DukeGpsMapInnerProps {
+  gpsRequest: DukeGpsRequest | null;
+  recaptchaSiteKey: string;
+}
+
+const DukeGpsMapInner: React.FC<DukeGpsMapInnerProps> = ({ gpsRequest, recaptchaSiteKey }) => {
+  const map = useMap();
+  const coreLib = useMapsLibrary('core');
   const placesLib = useMapsLibrary('places');
   const routesLib = useMapsLibrary('routes');
-  const coreLib = useMapsLibrary('core');
-
-  // Bind Firebase App Check token provider onto google.maps.Settings singleton when configured
-  useEffect(() => {
-    if (!coreLib || !fetchAppCheckToken) return;
-    const SettingsCtor = (
-      coreLib as unknown as {
-        Settings?: {
-          getInstance: () => {
-            fetchAppCheckToken?: () => Promise<{ token: string }>;
-          };
-        };
-      }
-    ).Settings;
-    if (SettingsCtor?.getInstance) {
-      SettingsCtor.getInstance().fetchAppCheckToken = fetchAppCheckToken;
-    }
-  }, [coreLib, fetchAppCheckToken]);
-
-  const autocompleteContainerRef = useRef<HTMLDivElement | null>(null);
-  const routePolylinesRef = useRef<GmpPolylineLike[]>([]);
-  const lastHandledReqIdRef = useRef<string | null>(null);
 
   const [searchInput, setSearchInput] = useState('');
-  const [searching, setSearching] = useState(false);
-  const [locatingGps, setLocatingGps] = useState(false);
-  const [computingRoute, setComputingRoute] = useState(false);
-  const [statusError, setStatusError] = useState<string | null>(null);
-  const [statusInfo, setStatusInfo] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<google.maps.places.AutocompleteSuggestion[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
-  const [places, setPlaces] = useState<GpsPlaceResult[]>([]);
-  const [selectedPlace, setSelectedPlace] = useState<GpsPlaceResult | null>(null);
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
-
-  const [showRouteForm, setShowRouteForm] = useState(false);
   const [originInput, setOriginInput] = useState('');
   const [destinationInput, setDestinationInput] = useState('');
   const [travelMode, setTravelMode] = useState<DukeGpsTravelMode>('DRIVING');
-  const [routeSummary, setRouteSummary] = useState<GpsRouteSummary | null>(null);
+  const [showRouteBar, setShowRouteBar] = useState(false);
 
-  const clearRoutePolylines = useCallback(() => {
-    routePolylinesRef.current.forEach((p) => p.setMap(null));
-    routePolylinesRef.current = [];
-    setRouteSummary(null);
-  }, []);
+  const [placesList, setPlacesList] = useState<ResolvedPlaceInfo[]>([DEFAULT_PLACE]);
+  const [selectedPlace, setSelectedPlace] = useState<ResolvedPlaceInfo | null>(DEFAULT_PLACE);
+  const [infoWindowOpen, setInfoWindowOpen] = useState(false);
 
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [locatingUser, setLocatingUser] = useState(false);
+
+  const [routeSummary, setRouteSummary] = useState<ComputedRouteSummary | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [computingRoute, setComputingRoute] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [appCheckActive, setAppCheckActive] = useState(false);
+
+  const sessionTokenRef = useRef<google.maps.places.AutocompleteSessionToken | null>(null);
+  const polylinesRef = useRef<google.maps.Polyline[]>([]);
+  const lastHandledRequestRef = useRef<string>('');
+
+  // Bind Firebase App Check token fetcher to Google Maps Settings when site key is available
   useEffect(() => {
-    return () => {
-      routePolylinesRef.current.forEach((p) => p.setMap(null));
-      routePolylinesRef.current = [];
-    };
-  }, []);
-
-  // Imperatively mount modern PlaceAutocompleteElement (CF8 compliant)
-  useEffect(() => {
-    if (!placesLib || !autocompleteContainerRef.current) return;
-    const container = autocompleteContainerRef.current;
-    container.innerHTML = '';
-
-    const PlaceAutocompleteCtor = (
-      placesLib as unknown as {
-        PlaceAutocompleteElement?: new (opts?: Record<string, unknown>) => HTMLElement;
-      }
-    ).PlaceAutocompleteElement;
-
-    if (!PlaceAutocompleteCtor) return;
-
-    const autocomplete = new PlaceAutocompleteCtor({
-      requestedLanguage: 'pt-BR',
-      requestedRegion: 'BR',
-    });
-    autocomplete.style.width = '100%';
-    autocomplete.style.colorScheme = 'dark';
-    container.appendChild(autocomplete);
-
-    const onSelect = (ev: Event) => {
-      const customEv = ev as unknown as {
-        placePrediction?: { toPlace: () => GmpPlaceLike };
-      };
-      const place = customEv.placePrediction?.toPlace();
-      if (!place) return;
-
-      setStatusError(null);
-      setSearching(true);
-      void place
-        .fetchFields({
-          fields: [
-            'id',
-            'displayName',
-            'formattedAddress',
-            'location',
-            'viewport',
-            'rating',
-            'userRatingCount',
-            'googleMapsURI',
-            'businessStatus',
-          ],
-        })
-        .then(() => {
-          const coords = extractLatLng(place.location);
-          if (!coords) {
-            setStatusError('Local encontrado sem coordenadas no mapa.');
-            return;
-          }
-          const result: GpsPlaceResult = {
-            id: place.id || `place_${Date.now()}`,
-            displayName: place.displayName || 'Local selecionado',
-            formattedAddress: place.formattedAddress || '',
-            location: coords,
-            rating: place.rating,
-            userRatingCount: place.userRatingCount,
-            googleMapsURI: place.googleMapsURI,
-            businessStatus: place.businessStatus,
+    if (!coreLib || !recaptchaSiteKey) return;
+    try {
+      const fetcher = createMapsAppCheckTokenFetcher(recaptchaSiteKey);
+      const settingsClass = (
+        coreLib as unknown as {
+          Settings?: {
+            getInstance: () => { fetchAppCheckToken?: () => Promise<{ token: string }> };
           };
-          clearRoutePolylines();
-          setPlaces([result]);
-          setSelectedPlace(result);
-          setDestinationInput(result.formattedAddress || result.displayName);
-          setStatusInfo(`Localizado: ${result.displayName}`);
-          if (map) {
-            if (place.viewport) {
-              map.fitBounds(place.viewport as Parameters<typeof map.fitBounds>[0]);
-            } else {
-              map.panTo(coords);
-              map.setZoom(16);
-            }
-          }
-        })
-        .catch((err: unknown) => {
-          if (!triggerQuotaBannerIfNeeded(err)) {
-            setStatusError('Não foi possível carregar os detalhes deste local agora.');
-          }
-        })
-        .finally(() => {
-          setSearching(false);
-        });
-    };
+        }
+      ).Settings;
+      if (fetcher && settingsClass?.getInstance) {
+        settingsClass.getInstance().fetchAppCheckToken = fetcher;
+        setAppCheckActive(true);
+      }
+    } catch (err) {
+      console.warn('[DukeGpsMapPanel] App Check Settings binding skipped:', err);
+    }
+  }, [coreLib, recaptchaSiteKey]);
 
-    autocomplete.addEventListener('gmp-select', onSelect);
+  const clearPolylines = useCallback(() => {
+    polylinesRef.current.forEach((p) => p.setMap(null));
+    polylinesRef.current = [];
+  }, []);
 
+  useEffect(() => {
     return () => {
-      autocomplete.removeEventListener('gmp-select', onSelect);
-      container.innerHTML = '';
+      clearPolylines();
     };
-  }, [placesLib, map, clearRoutePolylines]);
+  }, [clearPolylines]);
 
-  // Modern Places API (New): Place.searchByText
-  const executeTextSearch = useCallback(
-    async (queryText: string) => {
-      const cleanQuery = queryText.trim();
-      if (!cleanQuery || !placesLib) return;
+  // Modern Places API (New) AutocompleteSuggestion with AutocompleteSessionToken
+  useEffect(() => {
+    if (!placesLib || !showSuggestions) return;
+    const trimmed = searchInput.trim();
+    if (trimmed.length < 2) {
+      setSuggestions([]);
+      setLoadingSuggestions(false);
+      return;
+    }
 
-      setSearching(true);
-      setStatusError(null);
-      setStatusInfo(null);
-      clearRoutePolylines();
-
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
       try {
-        const request: Record<string, unknown> = {
-          textQuery: cleanQuery,
-          fields: [
-            'id',
-            'displayName',
-            'formattedAddress',
-            'location',
-            'viewport',
-            'rating',
-            'userRatingCount',
-            'googleMapsURI',
-            'businessStatus',
-          ],
+        const { AutocompleteSessionToken, AutocompleteSuggestion } = placesLib;
+        if (!sessionTokenRef.current) {
+          sessionTokenRef.current = new AutocompleteSessionToken();
+        }
+        setLoadingSuggestions(true);
+        const res = await AutocompleteSuggestion.fetchAutocompleteSuggestions({
+          input: trimmed,
+          sessionToken: sessionTokenRef.current,
           language: 'pt-BR',
-          region: 'BR',
-          maxResultCount: 8,
-          internalUsageAttributionIds: [GMP_ATTRIBUTION_ID],
-        };
-        if (userLocation) {
-          request.locationBias = userLocation;
-        }
-
-        const PlaceClass = placesLib.Place as unknown as {
-          searchByText: (req: Record<string, unknown>) => Promise<{ places?: GmpPlaceLike[] }>;
-        };
-        const response = await PlaceClass.searchByText(request);
-        const found = response?.places || [];
-
-        const mapped: GpsPlaceResult[] = found
-          .map((p, idx): GpsPlaceResult | null => {
-            const coords = extractLatLng(p.location);
-            if (!coords) return null;
-            return {
-              id: p.id || `found_${idx}_${Date.now()}`,
-              displayName: p.displayName || cleanQuery,
-              formattedAddress: p.formattedAddress || '',
-              location: coords,
-              rating: p.rating,
-              userRatingCount: p.userRatingCount,
-              googleMapsURI: p.googleMapsURI,
-              businessStatus: p.businessStatus,
-            };
-          })
-          .filter((item): item is GpsPlaceResult => item !== null);
-
-        setPlaces(mapped);
-        if (mapped.length === 0) {
-          setSelectedPlace(null);
-          setStatusInfo(`Nenhum resultado encontrado no Google Maps para "${cleanQuery}". Tente informar cidade ou estado.`);
-          return;
-        }
-
-        const first = mapped[0];
-        setSelectedPlace(first);
-        setDestinationInput(first.formattedAddress || first.displayName);
-        setStatusInfo(
-          mapped.length === 1
-            ? `1 local encontrado no Google Maps para "${cleanQuery}".`
-            : `${mapped.length} locais encontrados no Google Maps para "${cleanQuery}".`
-        );
-
-        if (map) {
-          if (mapped.length === 1) {
-            map.panTo(first.location);
-            map.setZoom(16);
-          } else if (coreLib?.LatLngBounds) {
-            const bounds = new coreLib.LatLngBounds();
-            mapped.forEach((m) => bounds.extend(m.location));
-            map.fitBounds(bounds, 60);
-          } else {
-            map.panTo(first.location);
-            map.setZoom(13);
-          }
+          region: 'br',
+        });
+        if (!cancelled) {
+          setSuggestions(res.suggestions || []);
         }
       } catch (err) {
-        if (!triggerQuotaBannerIfNeeded(err)) {
-          setStatusError('Não foi possível pesquisar este endereço no Google Maps agora. Tente novamente.');
+        triggerQuotaNoticeIfNeeded(err);
+        if (!cancelled) {
+          setSuggestions([]);
         }
       } finally {
-        setSearching(false);
+        if (!cancelled) {
+          setLoadingSuggestions(false);
+        }
+      }
+    }, 260);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [placesLib, searchInput, showSuggestions]);
+
+  const resetAutocompleteSession = useCallback(() => {
+    sessionTokenRef.current = null;
+    setSuggestions([]);
+    setShowSuggestions(false);
+  }, []);
+
+  const focusMapOnPlace = useCallback(
+    (place: ResolvedPlaceInfo, viewport?: google.maps.LatLngBounds | null) => {
+      if (!map) return;
+      if (viewport) {
+        map.fitBounds(viewport);
+      } else {
+        map.panTo(place.location);
+        map.setZoom(15);
       }
     },
-    [placesLib, userLocation, map, coreLib, clearRoutePolylines]
+    [map]
   );
 
-  // Browser GPS current location (strictly user-initiated opt-in)
-  const locateCurrentGps = useCallback((): Promise<{ lat: number; lng: number } | null> => {
-    return new Promise((resolve) => {
-      if (typeof navigator === 'undefined' || !navigator.geolocation) {
-        setStatusError('Seu navegador não possui suporte a GPS neste dispositivo.');
-        resolve(null);
-        return;
-      }
-
-      setLocatingGps(true);
-      setStatusError(null);
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const coords = {
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-          };
-          setUserLocation(coords);
-          setStatusInfo(
-            `GPS ativo (${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}) — localização em tempo real captada.`
-          );
-          if (map) {
-            map.panTo(coords);
-            map.setZoom(16);
-          }
-          setLocatingGps(false);
-          resolve(coords);
-        },
-        (geoErr) => {
-          setLocatingGps(false);
-          if (geoErr.code === geoErr.PERMISSION_DENIED) {
-            setStatusError(
-              'Permissão de GPS bloqueada no navegador. Libere o acesso à localização ou digite sua cidade/endereço de origem.'
-            );
-          } else {
-            setStatusError('Não foi possível obter o sinal GPS agora. Tente novamente ou digite o endereço.');
-          }
-          resolve(null);
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
-      );
-    });
-  }, [map]);
-
-  // Modern Routes API: Route.computeRoutes via useMapsLibrary('routes')
-  const computeGpsRoute = useCallback(
+  // Compute Route using modern Routes API (`Route.computeRoutes`)
+  const runComputeRoute = useCallback(
     async (
-      originParam: string | { lat: number; lng: number },
-      destinationParam: string | { lat: number; lng: number },
-      mode: DukeGpsTravelMode
+      originVal: string | { lat: number; lng: number },
+      destinationVal: string | { lat: number; lng: number },
+      modeVal: DukeGpsTravelMode,
+      originLabelText: string,
+      destinationLabelText: string
     ) => {
       if (!routesLib || !map) return;
-
+      clearPolylines();
+      setRouteSummary(null);
+      setErrorMessage(null);
       setComputingRoute(true);
-      setStatusError(null);
-      setStatusInfo(null);
-      clearRoutePolylines();
+      setStatusMessage(`Calculando rota para ${destinationLabelText}...`);
 
       try {
-        const RouteClass = (
-          routesLib as unknown as {
-            Route?: {
-              computeRoutes: (req: Record<string, unknown>) => Promise<{
-                routes?: Array<{
-                  distanceMeters?: number;
-                  durationMillis?: number;
-                  viewport?: unknown;
-                  createPolylines?: () => GmpPolylineLike[];
-                }>;
+        const routeApi = (routesLib as unknown as {
+          Route?: {
+            computeRoutes: (req: Record<string, unknown>) => Promise<{
+              routes?: Array<{
+                distanceMeters?: number;
+                durationMillis?: number;
+                viewport?: google.maps.LatLngBounds;
+                createPolylines: () => google.maps.Polyline[];
               }>;
-            };
-          }
-        ).Route;
+            }>;
+          };
+        }).Route;
 
-        if (!RouteClass?.computeRoutes) {
-          setStatusError('Serviço de rotas Google Maps ainda carregando. Tente novamente em instantes.');
-          return;
+        if (!routeApi?.computeRoutes) {
+          throw new Error('Biblioteca de Rotas do Google Maps ainda não disponível.');
         }
 
-        const request = {
-          origin: originParam,
-          destination: destinationParam,
-          travelMode: mode,
+        const response = await routeApi.computeRoutes({
+          origin: originVal,
+          destination: destinationVal,
+          travelMode: modeVal,
           fields: ['path', 'distanceMeters', 'durationMillis', 'viewport', 'legs'],
-        };
+        });
 
-        const response = await RouteClass.computeRoutes(request);
         const primaryRoute = response?.routes?.[0];
         if (!primaryRoute) {
-          setStatusInfo('Nenhuma rota disponível para este trajeto e meio de transporte.');
+          setErrorMessage('Nenhuma rota encontrada entre os pontos informados.');
+          setStatusMessage(null);
           return;
         }
 
-        if (typeof primaryRoute.createPolylines === 'function') {
-          const newPolylines = primaryRoute.createPolylines();
-          newPolylines.forEach((polyline) => {
-            polyline.setOptions({
-              strokeColor: '#f59e0b',
-              strokeWeight: 6,
-              strokeOpacity: 0.92,
-            });
-            polyline.setMap(map);
+        const newPolylines = primaryRoute.createPolylines();
+        newPolylines.forEach((polyline) => {
+          polyline.setOptions({
+            strokeColor: '#fbbf24',
+            strokeOpacity: 0.95,
+            strokeWeight: 6,
           });
-          routePolylinesRef.current = newPolylines;
-        }
+          polyline.setMap(map);
+        });
+        polylinesRef.current = newPolylines;
 
         if (primaryRoute.viewport) {
-          map.fitBounds(primaryRoute.viewport as Parameters<typeof map.fitBounds>[0], 64);
+          map.fitBounds(primaryRoute.viewport);
         }
-
-        const originText =
-          typeof originParam === 'string'
-            ? originParam
-            : `${originParam.lat.toFixed(5)},${originParam.lng.toFixed(5)}`;
-        const destText =
-          typeof destinationParam === 'string'
-            ? destinationParam
-            : `${destinationParam.lat.toFixed(5)},${destinationParam.lng.toFixed(5)}`;
-
-        const googleMapsDirUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
-          originText
-        )}&destination=${encodeURIComponent(destText)}&travelmode=${mapTravelModeToGoogleMapsParam(mode)}`;
 
         setRouteSummary({
-          originLabel: typeof originParam === 'string' ? originParam : 'Minha Localização GPS',
-          destinationLabel: typeof destinationParam === 'string' ? destinationParam : 'Destino no Mapa',
-          travelMode: mode,
           distanceMeters: primaryRoute.distanceMeters ?? 0,
           durationMillis: primaryRoute.durationMillis ?? 0,
-          googleMapsDirUrl,
+          originLabel: originLabelText,
+          destinationLabel: destinationLabelText,
+          travelMode: modeVal,
         });
-        setShowRouteForm(true);
+        setStatusMessage(null);
       } catch (err) {
-        if (!triggerQuotaBannerIfNeeded(err)) {
-          setStatusError('Não foi possível calcular esta rota agora. Verifique a origem e o destino informados.');
-        }
+        triggerQuotaNoticeIfNeeded(err);
+        setErrorMessage(
+          'Não foi possível calcular a rota agora. Verifique os endereços ou tente outro modo de transporte.'
+        );
+        setStatusMessage(null);
       } finally {
         setComputingRoute(false);
       }
     },
-    [routesLib, map, clearRoutePolylines]
+    [routesLib, map, clearPolylines]
   );
 
-  // Execute incoming GPS requests dispatched directly from the Robô Duque chat
-  useEffect(() => {
-    if (!incomingRequest || !placesLib || !map) return;
-    const reqKey = incomingRequest.requestId || `${incomingRequest.action}:${incomingRequest.query}`;
-    if (lastHandledReqIdRef.current === reqKey) return;
-    lastHandledReqIdRef.current = reqKey;
+  // Search places via modern Places API (New): Place.searchByText
+  const runTextSearch = useCallback(
+    async (rawQuery: string, placeId?: string) => {
+      if (!placesLib || !map) return;
+      const trimmed = rawQuery.trim();
+      if (!trimmed && !placeId) return;
 
-    if (incomingRequest.action === 'my_location') {
-      void locateCurrentGps();
-      return;
-    }
+      clearPolylines();
+      setRouteSummary(null);
+      setErrorMessage(null);
+      setSearching(true);
+      setStatusMessage(`Buscando "${trimmed || placeId}" no Google Maps...`);
 
-    if (incomingRequest.action === 'route') {
-      const dest = incomingRequest.destinationQuery || incomingRequest.query;
-      const mode = incomingRequest.travelMode || 'DRIVING';
-      setTravelMode(mode);
-      setDestinationInput(dest);
-      setShowRouteForm(true);
+      try {
+        const { Place } = placesLib;
 
-      if (incomingRequest.originQuery) {
-        setOriginInput(incomingRequest.originQuery);
-        if (routesLib) {
-          void computeGpsRoute(incomingRequest.originQuery, dest, mode);
-        }
-      } else if (userLocation && routesLib) {
-        setOriginInput('');
-        void computeGpsRoute(userLocation, dest, mode);
-      } else {
-        // Attempt opt-in geolocation if user requested route from current position, fallback to place search
-        void locateCurrentGps().then((coords) => {
-          if (coords && routesLib) {
-            void computeGpsRoute(coords, dest, mode);
-          } else {
-            void executeTextSearch(dest);
+        if (placeId) {
+          const place = new Place({ id: placeId });
+          await place.fetchFields({
+            fields: [
+              'id',
+              'displayName',
+              'formattedAddress',
+              'location',
+              'viewport',
+              'rating',
+              'userRatingCount',
+              'googleMapsURI',
+              'websiteURI',
+              'nationalPhoneNumber',
+            ],
+          });
+          const loc = extractLatLng(place.location);
+          if (loc) {
+            const resolved: ResolvedPlaceInfo = {
+              id: place.id,
+              name: place.displayName || trimmed || 'Local encontrado',
+              address: place.formattedAddress || '',
+              location: loc,
+              rating: place.rating ?? undefined,
+              userRatingCount: place.userRatingCount ?? undefined,
+              googleMapsURI: place.googleMapsURI ?? undefined,
+              websiteURI: place.websiteURI ?? undefined,
+              nationalPhoneNumber: place.nationalPhoneNumber ?? undefined,
+            };
+            setPlacesList([resolved]);
+            setSelectedPlace(resolved);
+            setInfoWindowOpen(true);
+            setDestinationInput(resolved.address || resolved.name);
+            focusMapOnPlace(resolved, place.viewport);
+            setStatusMessage(null);
+            return;
           }
+        }
+
+        const { places } = await Place.searchByText({
+          textQuery: trimmed,
+          fields: [
+            'id',
+            'displayName',
+            'formattedAddress',
+            'location',
+            'viewport',
+            'rating',
+            'userRatingCount',
+            'googleMapsURI',
+            'websiteURI',
+            'nationalPhoneNumber',
+          ],
+          language: 'pt-BR',
+          region: 'br',
+          maxResultCount: 8,
         });
+
+        const resolvedList: ResolvedPlaceInfo[] = (places || [])
+          .map((p): ResolvedPlaceInfo | null => {
+            const loc = extractLatLng(p.location);
+            if (!loc) return null;
+            return {
+              id: p.id,
+              name: p.displayName || trimmed,
+              address: p.formattedAddress || '',
+              location: loc,
+              rating: p.rating ?? undefined,
+              userRatingCount: p.userRatingCount ?? undefined,
+              googleMapsURI: p.googleMapsURI ?? undefined,
+              websiteURI: p.websiteURI ?? undefined,
+              nationalPhoneNumber: p.nationalPhoneNumber ?? undefined,
+            };
+          })
+          .filter((item): item is ResolvedPlaceInfo => item !== null);
+
+        if (resolvedList.length === 0) {
+          setErrorMessage(`Nenhum local encontrado para "${trimmed}". Tente informar cidade ou endereço.`);
+          setStatusMessage(null);
+          return;
+        }
+
+        setPlacesList(resolvedList);
+        const primary = resolvedList[0];
+        setSelectedPlace(primary);
+        setInfoWindowOpen(true);
+        setDestinationInput(primary.address || primary.name);
+        focusMapOnPlace(primary, places?.[0]?.viewport ?? null);
+        setStatusMessage(null);
+      } catch (err) {
+        triggerQuotaNoticeIfNeeded(err);
+        setErrorMessage('Não foi possível consultar o local no Google Maps agora. Tente novamente.');
+        setStatusMessage(null);
+      } finally {
+        setSearching(false);
       }
+    },
+    [placesLib, map, clearPolylines, focusMapOnPlace]
+  );
+
+  // Select autocomplete suggestion (Place.fetchFields + resetSession)
+  const handleSelectSuggestion = useCallback(
+    async (suggestion: google.maps.places.AutocompleteSuggestion) => {
+      if (!placesLib || !suggestion.placePrediction) return;
+      setErrorMessage(null);
+      setSearching(true);
+      try {
+        const place = suggestion.placePrediction.toPlace();
+        await place.fetchFields({
+          fields: [
+            'id',
+            'displayName',
+            'formattedAddress',
+            'location',
+            'viewport',
+            'rating',
+            'userRatingCount',
+            'googleMapsURI',
+            'websiteURI',
+            'nationalPhoneNumber',
+          ],
+        });
+        const loc = extractLatLng(place.location);
+        if (loc) {
+          const resolved: ResolvedPlaceInfo = {
+            id: place.id,
+            name: place.displayName || suggestion.placePrediction.text.text,
+            address: place.formattedAddress || '',
+            location: loc,
+            rating: place.rating ?? undefined,
+            userRatingCount: place.userRatingCount ?? undefined,
+            googleMapsURI: place.googleMapsURI ?? undefined,
+            websiteURI: place.websiteURI ?? undefined,
+            nationalPhoneNumber: place.nationalPhoneNumber ?? undefined,
+          };
+          clearPolylines();
+          setRouteSummary(null);
+          setPlacesList([resolved]);
+          setSelectedPlace(resolved);
+          setInfoWindowOpen(true);
+          setSearchInput(resolved.name);
+          setDestinationInput(resolved.address || resolved.name);
+          focusMapOnPlace(resolved, place.viewport);
+        }
+        resetAutocompleteSession();
+      } catch (err) {
+        triggerQuotaNoticeIfNeeded(err);
+        setErrorMessage('Não foi possível carregar os detalhes deste local.');
+      } finally {
+        setSearching(false);
+      }
+    },
+    [placesLib, clearPolylines, focusMapOnPlace, resetAutocompleteSession]
+  );
+
+  const handleLocateMe = useCallback(() => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setErrorMessage('Seu navegador não suporta geolocalização GPS.');
       return;
     }
+    setErrorMessage(null);
+    setLocatingUser(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        setUserLocation(coords);
+        setOriginInput('Minha localização GPS');
+        if (map) {
+          map.panTo(coords);
+          map.setZoom(15);
+        }
+        setLocatingUser(false);
+      },
+      () => {
+        setErrorMessage('Permissão de GPS negada ou indisponível neste dispositivo.');
+        setLocatingUser(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }, [map]);
 
-    setSearchInput(incomingRequest.query);
-    void executeTextSearch(incomingRequest.query);
-  }, [
-    incomingRequest,
-    placesLib,
-    routesLib,
-    map,
-    userLocation,
-    locateCurrentGps,
-    computeGpsRoute,
-    executeTextSearch,
-  ]);
+  // Execute incoming chat GPS request from Robô Duque
+  useEffect(() => {
+    if (!gpsRequest || !map || !placesLib) return;
+    const signature = `${gpsRequest.intent}|${gpsRequest.query}|${gpsRequest.origin || ''}|${gpsRequest.destination || ''}|${gpsRequest.travelMode || ''}|${gpsRequest.requestedAt || ''}`;
+    if (lastHandledRequestRef.current === signature) return;
+    lastHandledRequestRef.current = signature;
 
-  const handleSubmitRouteForm = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const dest = destinationInput.trim();
-    if (!dest) {
-      setStatusError('Informe o destino para traçar a rota no GPS.');
-      return;
-    }
-    const originText = originInput.trim();
-    if (originText) {
-      await computeGpsRoute(originText, dest, travelMode);
-    } else if (userLocation) {
-      await computeGpsRoute(userLocation, dest, travelMode);
+    const nextMode = gpsRequest.travelMode || 'DRIVING';
+    setTravelMode(nextMode);
+
+    if (gpsRequest.intent === 'route') {
+      const destText = (gpsRequest.destination || gpsRequest.query || '').trim();
+      const origText = (gpsRequest.origin || '').trim();
+      setShowRouteBar(true);
+      setDestinationInput(destText);
+      if (origText) setOriginInput(origText);
+
+      if (routesLib && destText) {
+        if (origText) {
+          void runComputeRoute(origText, destText, nextMode, origText, destText);
+        } else if (userLocation) {
+          void runComputeRoute(userLocation, destText, nextMode, 'Minha localização GPS', destText);
+        } else if (typeof navigator !== 'undefined' && navigator.geolocation) {
+          setStatusMessage('Obtendo sua localização GPS para traçar a rota...');
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+              setUserLocation(coords);
+              setOriginInput('Minha localização GPS');
+              void runComputeRoute(coords, destText, nextMode, 'Minha localização GPS', destText);
+            },
+            () => {
+              // Fallback: locate the destination place on the map so the user sees it immediately
+              void runTextSearch(destText, gpsRequest.placeId);
+            },
+            { enableHighAccuracy: true, timeout: 7000 }
+          );
+        } else {
+          void runTextSearch(destText, gpsRequest.placeId);
+        }
+      } else {
+        void runTextSearch(destText || gpsRequest.query, gpsRequest.placeId);
+      }
     } else {
-      const coords = await locateCurrentGps();
-      if (coords) {
-        await computeGpsRoute(coords, dest, travelMode);
-      }
+      setSearchInput(gpsRequest.query);
+      void runTextSearch(gpsRequest.query, gpsRequest.placeId);
     }
+  }, [gpsRequest, map, placesLib, routesLib, userLocation, runComputeRoute, runTextSearch]);
+
+  const handleSubmitRouteForm = (e: React.FormEvent) => {
+    e.preventDefault();
+    const dest = destinationInput.trim() || selectedPlace?.address || selectedPlace?.name || '';
+    if (!dest) {
+      setErrorMessage('Informe um destino para traçar a rota no GPS.');
+      return;
+    }
+    const orig = originInput.trim();
+    if (!orig || orig === 'Minha localização GPS') {
+      if (userLocation) {
+        void runComputeRoute(userLocation, dest, travelMode, 'Minha localização GPS', dest);
+      } else if (typeof navigator !== 'undefined' && navigator.geolocation) {
+        setLocatingUser(true);
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+            setUserLocation(coords);
+            setOriginInput('Minha localização GPS');
+            setLocatingUser(false);
+            void runComputeRoute(coords, dest, travelMode, 'Minha localização GPS', dest);
+          },
+          () => {
+            setLocatingUser(false);
+            setErrorMessage('Ative o GPS do navegador ou digite o endereço de origem.');
+          },
+          { enableHighAccuracy: true, timeout: 8000 }
+        );
+      } else {
+        setErrorMessage('Digite o endereço de origem para traçar a rota.');
+      }
+      return;
+    }
+    void runComputeRoute(orig, dest, travelMode, orig, dest);
   };
 
+  const googleMapsExternalUrl = useMemo(() => {
+    if (routeSummary) {
+      const originParam = encodeURIComponent(
+        routeSummary.originLabel === 'Minha localização GPS' && userLocation
+          ? `${userLocation.lat},${userLocation.lng}`
+          : routeSummary.originLabel
+      );
+      const destParam = encodeURIComponent(routeSummary.destinationLabel);
+      const modeMap: Record<DukeGpsTravelMode, string> = {
+        DRIVING: 'driving',
+        WALKING: 'walking',
+        BICYCLING: 'bicycling',
+        TRANSIT: 'transit',
+      };
+      return `https://www.google.com/maps/dir/?api=1&origin=${originParam}&destination=${destParam}&travelmode=${modeMap[routeSummary.travelMode]}`;
+    }
+    if (selectedPlace?.googleMapsURI) return selectedPlace.googleMapsURI;
+    if (selectedPlace) {
+      return `https://www.google.com/maps/search/?api=1&query=${selectedPlace.location.lat},${selectedPlace.location.lng}`;
+    }
+    return `https://www.google.com/maps/search/?api=1&query=${DEFAULT_CENTER.lat},${DEFAULT_CENTER.lng}`;
+  }, [routeSummary, selectedPlace, userLocation]);
+
   return (
-    <div className="max-w-5xl mx-auto space-y-4">
-      {/* Top GPS Control Card */}
-      <div className="rounded-2xl bg-[#07150f] border border-amber-400/35 p-4 space-y-3">
+    <div className="space-y-3">
+      {/* Top GPS Search & Controls Bar */}
+      <div className="rounded-2xl bg-[#07150f] border border-amber-400/35 p-3 sm:p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-amber-400/15 border border-amber-400/40 flex items-center justify-center text-amber-300">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-amber-400/15 border border-amber-400/45 flex items-center justify-center text-amber-300 shrink-0">
               <Compass className="w-4 h-4" />
             </div>
-            <div>
-              <h2 className="font-display text-base sm:text-lg font-bold text-white leading-tight">
-                GPS Google Maps ao Vivo — Robô Duque
+            <div className="min-w-0">
+              <h2 className="text-sm font-bold text-white truncate flex items-center gap-1.5">
+                <span>GPS Google Maps — Robô Duque</span>
+                {appCheckActive && (
+                  <span
+                    title="Firebase App Check ativo"
+                    className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-emerald-300"
+                  >
+                    <ShieldCheck className="w-3 h-3" />
+                  </span>
+                )}
               </h2>
-              <p className="text-[11px] text-emerald-200/75">
-                Busque qualquer endereço, cidade, hotel ou peça no chat para localizar e traçar rotas pelo Google Maps.
+              <p className="text-[11px] text-emerald-200/75 truncate">
+                Peça qualquer localização no chat ou pesquise endereços, locais e rotas ao vivo
               </p>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <button
               type="button"
-              onClick={() => {
-                setSelectedPlace(DEFAULT_PIN_PLACE);
-                if (map) {
-                  map.panTo(DEFAULT_GPS_CENTER);
-                  map.setZoom(DEFAULT_GPS_ZOOM);
-                }
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black/50 hover:bg-black/75 border border-amber-400/35 text-amber-200 font-bold text-xs cursor-pointer whitespace-nowrap"
+              onClick={handleLocateMe}
+              disabled={locatingUser}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-700/80 hover:bg-emerald-600 text-white text-xs font-semibold cursor-pointer disabled:opacity-60"
             >
-              <MapPin className="w-3.5 h-3.5" />
-              <span>Ponto no Mapa</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => void locateCurrentGps()}
-              disabled={locatingGps}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-semibold text-xs cursor-pointer whitespace-nowrap disabled:opacity-55"
-            >
-              {locatingGps ? (
+              {locatingUser ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
                 <LocateFixed className="w-3.5 h-3.5" />
               )}
-              <span>{locatingGps ? 'Localizando...' : 'Minha Localização GPS'}</span>
+              <span>Meu GPS</span>
             </button>
-
             <button
               type="button"
-              onClick={() => setShowRouteForm((prev) => !prev)}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold cursor-pointer whitespace-nowrap ${
-                showRouteForm
-                  ? 'bg-amber-400 border-amber-300 text-neutral-950'
-                  : 'bg-black/50 border-amber-400/35 text-amber-200 hover:bg-black/75'
+              onClick={() => setShowRouteBar((prev) => !prev)}
+              className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border transition-colors ${
+                showRouteBar
+                  ? 'bg-amber-400 text-neutral-950 border-amber-300'
+                  : 'bg-black/50 text-amber-200 border-amber-400/35 hover:border-amber-400'
               }`}
             >
               <RouteIcon className="w-3.5 h-3.5" />
               <span>Traçar Rota</span>
             </button>
+            <a
+              href={googleMapsExternalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-black/50 hover:bg-black/75 border border-amber-400/30 text-emerald-100 hover:text-amber-200 text-xs font-semibold"
+            >
+              <ExternalLink className="w-3.5 h-3.5 text-amber-300" />
+              <span>Abrir no Maps</span>
+            </a>
           </div>
         </div>
 
-        {/* Search Bars: Free Text Search + Official Google Places Autocomplete */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              void executeTextSearch(searchInput);
-            }}
-            className="flex items-center gap-1.5"
-          >
+        {/* Search Input with Places API (New) Autocomplete */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            setShowSuggestions(false);
+            void runTextSearch(searchInput);
+          }}
+          className="relative"
+        >
+          <div className="flex items-center gap-2">
             <div className="relative flex-1">
-              <Search className="w-3.5 h-3.5 text-amber-300 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <Search className="w-4 h-4 text-amber-300/80 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
                 value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Buscar local, rua, hotel, igreja, cidade..."
-                className="w-full rounded-xl bg-black/55 border border-amber-400/30 focus:border-amber-400 pl-9 pr-3 py-2 text-xs text-white placeholder:text-emerald-200/45 focus:outline-none"
+                onChange={(e) => {
+                  setSearchInput(e.target.value);
+                  setShowSuggestions(true);
+                }}
+                onFocus={() => {
+                  if (searchInput.trim().length >= 2) setShowSuggestions(true);
+                }}
+                placeholder="Buscar cidade, endereço, hotel, igreja, hospital ou ponto turístico..."
+                className="w-full rounded-xl bg-black/60 border border-amber-400/30 focus:border-amber-400 pl-9 pr-8 py-2 text-xs sm:text-sm text-white placeholder:text-emerald-200/45 focus:outline-none"
               />
+              {searchInput && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchInput('');
+                    resetAutocompleteSession();
+                  }}
+                  aria-label="Limpar busca GPS"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-emerald-200/65 hover:text-white cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
             <button
               type="submit"
               disabled={searching || !searchInput.trim()}
-              className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-xs cursor-pointer whitespace-nowrap disabled:opacity-45 inline-flex items-center gap-1"
+              className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-xs cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5 shrink-0"
             >
-              {searching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
-              <span>Buscar</span>
+              {searching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MapPin className="w-3.5 h-3.5" />}
+              <span>Localizar</span>
             </button>
-          </form>
-
-          <div className="space-y-1">
-            <div
-              ref={autocompleteContainerRef}
-              className="w-full min-h-[36px] rounded-xl overflow-hidden border border-amber-400/25 bg-black/45"
-            />
           </div>
-        </div>
 
-        {/* Route Planner Panel */}
-        {showRouteForm && (
+          {showSuggestions && (loadingSuggestions || suggestions.length > 0) && (
+            <div className="absolute left-0 right-0 mt-1.5 z-30 rounded-xl bg-[#071811] border border-amber-400/45 shadow-2xl overflow-hidden max-h-64 overflow-y-auto conae-scroll">
+              {loadingSuggestions && suggestions.length === 0 ? (
+                <div className="px-3 py-2.5 text-xs text-emerald-200/75 flex items-center gap-2">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-300" />
+                  <span>Buscando sugestões no Google Maps...</span>
+                </div>
+              ) : (
+                suggestions.map((suggestion, idx) => (
+                  <button
+                    key={suggestion.placePrediction?.placeId || idx}
+                    type="button"
+                    onClick={() => void handleSelectSuggestion(suggestion)}
+                    className="w-full text-left px-3 py-2 hover:bg-amber-400/15 border-b border-white/5 last:border-b-0 flex items-start gap-2 cursor-pointer"
+                  >
+                    <MapPin className="w-3.5 h-3.5 text-amber-300 shrink-0 mt-0.5" />
+                    <span className="text-xs text-emerald-50">
+                      {suggestion.placePrediction?.text.text}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </form>
+
+        {/* Expandable Routes Panel */}
+        {showRouteBar && (
           <form
-            onSubmit={(e) => void handleSubmitRouteForm(e)}
+            onSubmit={handleSubmitRouteForm}
             className="rounded-xl bg-black/45 border border-amber-400/25 p-3 space-y-2.5"
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -733,233 +791,179 @@ const GpsInteractiveWorkspace: React.FC<GpsWorkspaceInternalProps> = ({
                 type="text"
                 value={originInput}
                 onChange={(e) => setOriginInput(e.target.value)}
-                placeholder={
-                  userLocation
-                    ? 'Origem: Minha Localização GPS (ou digite outro endereço)'
-                    : 'Origem (deixe vazio para usar seu GPS atual)'
-                }
-                className="w-full rounded-lg bg-[#081711] border border-amber-400/25 px-3 py-2 text-xs text-white placeholder:text-emerald-200/45 focus:outline-none focus:border-amber-400"
+                placeholder="Origem (vazio = Meu GPS atual)"
+                className="w-full rounded-lg bg-[#081711] border border-amber-400/25 focus:border-amber-400 px-3 py-1.5 text-xs text-white placeholder:text-emerald-200/45 focus:outline-none"
               />
               <input
                 type="text"
                 value={destinationInput}
                 onChange={(e) => setDestinationInput(e.target.value)}
-                placeholder="Destino (ex: Aeroporto de Goiânia, Avenida Paulista...)"
-                className="w-full rounded-lg bg-[#081711] border border-amber-400/25 px-3 py-2 text-xs text-white placeholder:text-emerald-200/45 focus:outline-none focus:border-amber-400"
+                placeholder="Destino (ex: Aeroporto de Goiânia)"
+                className="w-full rounded-lg bg-[#081711] border border-amber-400/25 focus:border-amber-400 px-3 py-1.5 text-xs text-white placeholder:text-emerald-200/45 focus:outline-none"
               />
             </div>
-
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex flex-wrap items-center gap-1.5">
-                {TRAVEL_MODES.map((m) => (
+              <div className="flex items-center gap-1 flex-wrap">
+                {TRAVEL_MODES.map(({ id, label, Icon }) => (
                   <button
-                    key={m.id}
+                    key={id}
                     type="button"
-                    onClick={() => setTravelMode(m.id)}
-                    className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer ${
-                      travelMode === m.id
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-[#081711] text-emerald-100/80 border border-white/15 hover:border-amber-400/50'
+                    onClick={() => setTravelMode(id)}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer ${
+                      travelMode === id
+                        ? 'bg-amber-400 text-neutral-950'
+                        : 'bg-[#081711] text-emerald-100 border border-white/15 hover:border-amber-400/50'
                     }`}
                   >
-                    {m.icon}
-                    <span>{m.label}</span>
+                    <Icon className="w-3 h-3" />
+                    <span>{label}</span>
                   </button>
                 ))}
               </div>
-
-              <div className="flex items-center gap-2">
-                {routeSummary && (
-                  <button
-                    type="button"
-                    onClick={clearRoutePolylines}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-black/60 border border-white/15 text-[11px] text-emerald-200 hover:text-white cursor-pointer"
-                  >
-                    <X className="w-3 h-3" />
-                    <span>Limpar Rota</span>
-                  </button>
+              <button
+                type="submit"
+                disabled={computingRoute}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs cursor-pointer disabled:opacity-50"
+              >
+                {computingRoute ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Navigation className="w-3.5 h-3.5" />
                 )}
-                <button
-                  type="submit"
-                  disabled={computingRoute || !destinationInput.trim()}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-xs cursor-pointer disabled:opacity-45"
-                >
-                  {computingRoute ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Navigation className="w-3.5 h-3.5" />
-                  )}
-                  <span>{computingRoute ? 'Calculando...' : 'Calcular Rota GPS'}</span>
-                </button>
-              </div>
+                <span>Calcular Rota</span>
+              </button>
             </div>
           </form>
         )}
 
-        {/* Status / Route Summary Feedback */}
-        {statusError && (
-          <div className="rounded-xl bg-red-950/70 border border-red-400/45 px-3 py-2 text-xs text-red-100">
-            {statusError}
+        {statusMessage && (
+          <div className="text-xs text-amber-200 flex items-center gap-1.5">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-300" />
+            <span>{statusMessage}</span>
           </div>
         )}
-        {statusInfo && !statusError && (
-          <div className="rounded-xl bg-emerald-950/65 border border-emerald-400/35 px-3 py-2 text-xs text-emerald-100 flex items-center gap-2">
-            <MapPin className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-            <span>{statusInfo}</span>
+
+        {errorMessage && (
+          <div className="rounded-xl bg-red-950/70 border border-red-400/45 px-3 py-2 text-xs text-red-100 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-red-300 shrink-0 mt-0.5" />
+            <span>{errorMessage}</span>
           </div>
         )}
 
         {routeSummary && (
-          <div className="rounded-xl bg-amber-400/12 border border-amber-400/45 p-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="rounded-xl bg-emerald-950/70 border border-emerald-400/40 px-3 py-2.5 flex flex-wrap items-center justify-between gap-2">
             <div className="space-y-0.5 min-w-0">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-amber-300">
-                Rota Calculada pelo Google Maps
-              </p>
-              <p className="text-xs font-semibold text-white truncate">
+              <p className="text-xs font-bold text-amber-300 truncate">
                 {routeSummary.originLabel} → {routeSummary.destinationLabel}
               </p>
-              <div className="flex items-center gap-3 text-xs font-mono text-emerald-200 pt-0.5">
-                <span>Distância: {formatDistance(routeSummary.distanceMeters)}</span>
-                <span>Tempo estimado: {formatDuration(routeSummary.durationMillis)}</span>
-              </div>
+              <p className="text-xs text-emerald-100">
+                Distância: <strong>{formatDistance(routeSummary.distanceMeters)}</strong> · Tempo estimado:{' '}
+                <strong>{formatDuration(routeSummary.durationMillis)}</strong>
+              </p>
             </div>
-            <a
-              href={routeSummary.googleMapsDirUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-xs whitespace-nowrap"
+            <button
+              type="button"
+              onClick={() => {
+                clearPolylines();
+                setRouteSummary(null);
+              }}
+              className="px-2.5 py-1 rounded-lg bg-black/50 hover:bg-black/80 text-emerald-200 text-[11px] font-semibold cursor-pointer"
             >
-              <Navigation className="w-3.5 h-3.5" />
-              <span>Abrir GPS Passo a Passo</span>
-              <ExternalLink className="w-3 h-3" />
-            </a>
+              Limpar Rota
+            </button>
           </div>
         )}
       </div>
 
-      {/* Interactive Google Map Container (explicit CSS height per CF2) */}
-      <div className="w-full h-[380px] sm:h-[440px] rounded-2xl overflow-hidden border border-amber-400/40 bg-[#05100c] relative shadow-2xl">
+      {/* Interactive Google Map Container (explicit height per CF2, mapId per CF9, attribution ID per ToS) */}
+      <div className="w-full min-h-[420px] h-[52vh] lg:h-[58vh] rounded-2xl overflow-hidden border border-amber-400/35 bg-[#06130d] shadow-2xl relative">
         <GoogleMap
-          id="duke-gps-map"
+          defaultCenter={DEFAULT_CENTER}
+          defaultZoom={DEFAULT_ZOOM}
           mapId="DEMO_MAP_ID"
-          defaultCenter={DEFAULT_GPS_CENTER}
-          defaultZoom={DEFAULT_GPS_ZOOM}
           gestureHandling="greedy"
           streetViewControl
           mapTypeControl
           fullscreenControl
-          internalUsageAttributionIds={[GMP_ATTRIBUTION_ID]}
+          internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
           className="w-full h-full"
         >
-          {/* Default Pinned Location Marker (Modern AdvancedMarker replacing legacy google.maps.Marker) */}
-          <AdvancedMarker
-            position={DEFAULT_GPS_CENTER}
-            title="Ponto no mapa"
-            zIndex={selectedPlace?.id === DEFAULT_PIN_PLACE.id ? 60 : 20}
-            onClick={() => {
-              setSelectedPlace(DEFAULT_PIN_PLACE);
-              if (map) {
-                map.panTo(DEFAULT_GPS_CENTER);
-                map.setZoom(DEFAULT_GPS_ZOOM);
-              }
-            }}
-          >
-            <Pin
-              background="#f59e0b"
-              borderColor="#fef3c7"
-              glyphColor="#09090b"
-              scale={1.15}
-            />
-          </AdvancedMarker>
-
-          {/* User Live GPS Marker */}
-          {userLocation && (
-            <AdvancedMarker position={userLocation} title="Minha Localização GPS Atual">
-              <Pin background="#0284c7" borderColor="#e0f2fe" glyphColor="#ffffff" />
-            </AdvancedMarker>
-          )}
-
-          {/* Real Places API (New) Results Markers */}
-          {places.map((place, idx) => {
-            const isSelected = selectedPlace?.id === place.id;
+          {placesList.map((place, idx) => {
+            const isSelected = selectedPlace?.location.lat === place.location.lat &&
+              selectedPlace?.location.lng === place.location.lng &&
+              selectedPlace?.name === place.name;
             return (
               <AdvancedMarker
-                key={place.id}
+                key={place.id || `${place.location.lat}_${place.location.lng}_${idx}`}
                 position={place.location}
-                title={place.displayName}
-                zIndex={isSelected ? 50 : 10 + idx}
+                title={place.name}
                 onClick={() => {
                   setSelectedPlace(place);
-                  if (map) {
-                    map.panTo(place.location);
-                    if ((map.getZoom() ?? 10) < 14) {
-                      map.setZoom(15);
-                    }
-                  }
+                  setInfoWindowOpen(true);
+                  setDestinationInput(place.address || place.name);
                 }}
               >
                 <Pin
-                  background={isSelected ? '#f59e0b' : '#059669'}
-                  borderColor={isSelected ? '#fef3c7' : '#d1fae5'}
+                  background={isSelected ? '#fbbf24' : '#10b981'}
+                  borderColor={isSelected ? '#78350f' : '#064e3b'}
                   glyphColor={isSelected ? '#09090b' : '#ffffff'}
-                  scale={isSelected ? 1.2 : 1}
                 />
               </AdvancedMarker>
             );
           })}
 
-          {/* Selected Place InfoWindow */}
-          {selectedPlace && (
+          {userLocation && (
+            <AdvancedMarker position={userLocation} title="Sua localização atual">
+              <div className="w-4 h-4 rounded-full bg-sky-400 border-2 border-white shadow-[0_0_12px_rgba(56,189,248,0.9)]" />
+            </AdvancedMarker>
+          )}
+
+          {selectedPlace && infoWindowOpen && (
             <InfoWindow
               position={selectedPlace.location}
-              onCloseClick={() => setSelectedPlace(null)}
+              onCloseClick={() => setInfoWindowOpen(false)}
             >
-              <div className="text-neutral-900 max-w-[240px] space-y-1.5 p-0.5">
-                <p className="font-bold text-xs leading-snug">{selectedPlace.displayName}</p>
-                {selectedPlace.formattedAddress && (
-                  <p className="text-[11px] text-neutral-700 leading-snug">
-                    {selectedPlace.formattedAddress}
-                  </p>
+              <div className="max-w-[240px] text-neutral-900 space-y-1.5 p-0.5">
+                <p className="font-bold text-sm leading-tight">{selectedPlace.name}</p>
+                {selectedPlace.address && (
+                  <p className="text-xs text-neutral-700 leading-snug">{selectedPlace.address}</p>
                 )}
                 {typeof selectedPlace.rating === 'number' && (
-                  <p className="text-[11px] font-semibold text-amber-700">
-                    ★ {selectedPlace.rating.toFixed(1)}
-                    {selectedPlace.userRatingCount
-                      ? ` (${selectedPlace.userRatingCount.toLocaleString('pt-BR')} avaliações)`
-                      : ''}
+                  <p className="text-xs font-semibold text-amber-700 flex items-center gap-1">
+                    <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
+                    <span>
+                      {selectedPlace.rating.toFixed(1)}
+                      {selectedPlace.userRatingCount ? ` (${selectedPlace.userRatingCount})` : ''}
+                    </span>
                   </p>
                 )}
-                <div className="flex flex-wrap gap-1.5 pt-1">
+                <div className="flex items-center gap-2 pt-1">
                   <button
                     type="button"
                     onClick={() => {
-                      const target = selectedPlace.formattedAddress || selectedPlace.displayName;
-                      setDestinationInput(target);
-                      setShowRouteForm(true);
+                      setShowRouteBar(true);
+                      setDestinationInput(selectedPlace.address || selectedPlace.name);
                       if (userLocation) {
-                        void computeGpsRoute(userLocation, selectedPlace.location, travelMode);
-                      } else {
-                        void locateCurrentGps().then((coords) => {
-                          if (coords) {
-                            void computeGpsRoute(coords, selectedPlace.location, travelMode);
-                          }
-                        });
+                        void runComputeRoute(
+                          userLocation,
+                          selectedPlace.location,
+                          travelMode,
+                          'Minha localização GPS',
+                          selectedPlace.name
+                        );
                       }
                     }}
-                    className="px-2 py-1 rounded bg-emerald-700 text-white text-[10px] font-bold cursor-pointer"
+                    className="px-2 py-1 rounded bg-emerald-700 text-white text-[11px] font-bold cursor-pointer"
                   >
-                    Traçar Rota GPS
+                    Ir até aqui
                   </button>
                   <a
-                    href={
-                      selectedPlace.googleMapsURI ||
-                      `https://www.google.com/maps/search/?api=1&query=${selectedPlace.location.lat},${selectedPlace.location.lng}`
-                    }
+                    href={googleMapsExternalUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-2 py-1 rounded bg-amber-500 text-neutral-950 text-[10px] font-bold"
+                    className="text-[11px] font-semibold text-blue-700 underline"
                   >
-                    Abrir Google Maps
+                    Google Maps
                   </a>
                 </div>
               </div>
@@ -968,201 +972,143 @@ const GpsInteractiveWorkspace: React.FC<GpsWorkspaceInternalProps> = ({
         </GoogleMap>
       </div>
 
-      {/* Real Places List Returned by Google Places API (New) */}
-      {places.length > 0 && (
-        <div className="rounded-2xl bg-[#07150f] border border-amber-400/30 p-4 space-y-3">
-          <p className="text-xs font-bold uppercase tracking-wider text-amber-300">
-            Locais Encontrados no Google Maps ({places.length})
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-            {places.map((place) => {
-              const isSelected = selectedPlace?.id === place.id;
-              return (
-                <div
-                  key={place.id}
+      {/* Places Results Strip */}
+      {placesList.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {placesList.map((place, idx) => {
+            const isSelected = selectedPlace?.name === place.name &&
+              selectedPlace?.location.lat === place.location.lat;
+            return (
+              <div
+                key={place.id || `card_${idx}`}
+                className={`rounded-xl p-3 border transition-colors flex items-start justify-between gap-2 ${
+                  isSelected
+                    ? 'bg-emerald-950/75 border-amber-400/60'
+                    : 'bg-[#07150f] border-amber-400/20 hover:border-amber-400/45'
+                }`}
+              >
+                <button
+                  type="button"
                   onClick={() => {
                     setSelectedPlace(place);
-                    if (map) {
-                      map.panTo(place.location);
-                      map.setZoom(16);
+                    setInfoWindowOpen(true);
+                    setDestinationInput(place.address || place.name);
+                    focusMapOnPlace(place);
+                  }}
+                  className="text-left min-w-0 flex-1 space-y-0.5 cursor-pointer"
+                >
+                  <p className="text-xs font-bold text-white truncate">{place.name}</p>
+                  <p className="text-[11px] text-emerald-200/75 line-clamp-2">
+                    {place.address || `${place.location.lat.toFixed(4)}, ${place.location.lng.toFixed(4)}`}
+                  </p>
+                  {typeof place.rating === 'number' && (
+                    <p className="text-[10px] text-amber-300 font-semibold flex items-center gap-1 pt-0.5">
+                      <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                      <span>
+                        {place.rating.toFixed(1)}
+                        {place.userRatingCount ? ` (${place.userRatingCount} avaliações)` : ''}
+                      </span>
+                    </p>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPlace(place);
+                    setShowRouteBar(true);
+                    setDestinationInput(place.address || place.name);
+                    if (userLocation) {
+                      void runComputeRoute(
+                        userLocation,
+                        place.location,
+                        travelMode,
+                        'Minha localização GPS',
+                        place.name
+                      );
                     }
                   }}
-                  className={`rounded-xl p-3 border transition-colors cursor-pointer space-y-2 ${
-                    isSelected
-                      ? 'bg-amber-400/12 border-amber-400'
-                      : 'bg-black/45 border-amber-400/20 hover:border-amber-400/55'
-                  }`}
+                  className="px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-[10px] cursor-pointer shrink-0 inline-flex items-center gap-1"
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <h3 className="text-xs font-bold text-white truncate">{place.displayName}</h3>
-                      {place.formattedAddress && (
-                        <p className="text-[11px] text-emerald-200/75 leading-snug mt-0.5">
-                          {place.formattedAddress}
-                        </p>
-                      )}
-                    </div>
-                    {typeof place.rating === 'number' && (
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-200 text-[10px] font-bold shrink-0">
-                        <Star className="w-3 h-3 fill-amber-300 text-amber-300" />
-                        {place.rating.toFixed(1)}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={(ev) => {
-                        ev.stopPropagation();
-                        setDestinationInput(place.formattedAddress || place.displayName);
-                        setShowRouteForm(true);
-                        if (userLocation) {
-                          void computeGpsRoute(userLocation, place.location, travelMode);
-                        } else {
-                          void locateCurrentGps().then((coords) => {
-                            if (coords) {
-                              void computeGpsRoute(coords, place.location, travelMode);
-                            }
-                          });
-                        }
-                      }}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-700/85 hover:bg-emerald-600 text-white text-[11px] font-semibold cursor-pointer"
-                    >
-                      <Navigation className="w-3 h-3" />
-                      <span>Rota GPS</span>
-                    </button>
-
-                    <a
-                      href={
-                        place.googleMapsURI ||
-                        `https://www.google.com/maps/search/?api=1&query=${place.location.lat},${place.location.lng}`
-                      }
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(ev) => ev.stopPropagation()}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-neutral-950 text-[11px] font-bold"
-                    >
-                      <ExternalLink className="w-3 h-3" />
-                      <span>Google Maps</span>
-                    </a>
-
-                    {onAskRobotAboutPlace && (
-                      <button
-                        type="button"
-                        onClick={(ev) => {
-                          ev.stopPropagation();
-                          onAskRobotAboutPlace(
-                            `Me dê dicas práticas, informações úteis e opções de roteiro para visitar "${place.displayName}" (${place.formattedAddress || 'local selecionado no mapa'}).`
-                          );
-                        }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-black/60 hover:bg-black/80 border border-amber-400/30 text-amber-200 text-[11px] font-semibold cursor-pointer"
-                      >
-                        <span>Perguntar ao Robô</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                  <Navigation className="w-3 h-3" />
+                  <span>Rota</span>
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
   );
 };
 
-export const DukeGpsMapPanel: React.FC<DukeGpsMapPanelProps> = ({
-  incomingRequest,
-  onAskRobotAboutPlace,
-}) => {
-  const [resolvedApiKey, setResolvedApiKey] = useState<string>(GOOGLE_MAPS_API_KEY);
-  const [resolvedRecaptchaKey, setResolvedRecaptchaKey] = useState<string>(RECAPTCHA_ENTERPRISE_SITE_KEY);
-  const [checkingKey, setCheckingKey] = useState<boolean>(!GOOGLE_MAPS_API_KEY);
+export const DukeGpsMapPanel: React.FC<DukeGpsMapPanelProps> = ({ gpsRequest }) => {
+  const buildTimeKey = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '').trim();
+  const buildTimeRecaptcha = (import.meta.env.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY || '').trim();
+
+  const [apiKey, setApiKey] = useState<string>(buildTimeKey);
+  const [recaptchaSiteKey, setRecaptchaSiteKey] = useState<string>(buildTimeRecaptcha);
+  const [loadingConfig, setLoadingConfig] = useState<boolean>(!buildTimeKey);
 
   useEffect(() => {
-    if (GOOGLE_MAPS_API_KEY && RECAPTCHA_ENTERPRISE_SITE_KEY) {
-      setResolvedApiKey(GOOGLE_MAPS_API_KEY);
-      setResolvedRecaptchaKey(RECAPTCHA_ENTERPRISE_SITE_KEY);
-      setCheckingKey(false);
-      return;
+    if (buildTimeKey) {
+      setApiKey(buildTimeKey);
+      setLoadingConfig(false);
     }
-
     let cancelled = false;
-    if (!GOOGLE_MAPS_API_KEY) {
-      setCheckingKey(true);
-    }
-
     fetch('/api/maps-config', { cache: 'no-store' })
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { apiKey?: string; recaptchaSiteKey?: string } | null) => {
         if (cancelled || !data) return;
-        if (!GOOGLE_MAPS_API_KEY && data.apiKey && typeof data.apiKey === 'string') {
-          setResolvedApiKey(data.apiKey.trim());
+        if (!buildTimeKey && data.apiKey) {
+          setApiKey(data.apiKey.trim());
         }
-        if (
-          !RECAPTCHA_ENTERPRISE_SITE_KEY &&
-          data.recaptchaSiteKey &&
-          typeof data.recaptchaSiteKey === 'string'
-        ) {
-          setResolvedRecaptchaKey(data.recaptchaSiteKey.trim());
+        if (!buildTimeRecaptcha && data.recaptchaSiteKey) {
+          setRecaptchaSiteKey(data.recaptchaSiteKey.trim());
         }
       })
       .catch(() => {
-        // Fallback to setup instructions if runtime config endpoint is unavailable
+        // Fallback to build-time key only
       })
       .finally(() => {
-        if (!cancelled) {
-          setCheckingKey(false);
-        }
+        if (!cancelled) setLoadingConfig(false);
       });
-
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [buildTimeKey, buildTimeRecaptcha]);
 
-  const fetchAppCheckToken = useMemo(
-    () => createMapsAppCheckTokenFetcher(resolvedRecaptchaKey),
-    [resolvedRecaptchaKey]
-  );
-
-  if (checkingKey) {
+  if (loadingConfig) {
     return (
-      <div className="max-w-xl mx-auto rounded-2xl bg-[#07150f] border border-amber-400/35 p-6 text-center space-y-3">
-        <Loader2 className="w-7 h-7 text-amber-300 animate-spin mx-auto" />
-        <p className="text-xs text-emerald-200/80">Conectando ao GPS Google Maps...</p>
+      <div className="min-h-[420px] rounded-2xl bg-[#07150f] border border-amber-400/30 flex flex-col items-center justify-center gap-3 p-6 text-center">
+        <Loader2 className="w-7 h-7 animate-spin text-amber-300" />
+        <p className="text-sm font-semibold text-amber-200">Carregando GPS Google Maps...</p>
       </div>
     );
   }
 
-  if (!resolvedApiKey) {
+  if (!apiKey) {
     return (
-      <div className="max-w-xl mx-auto rounded-2xl bg-[#07150f] border border-amber-400/35 p-6 text-center space-y-3">
-        <div className="w-12 h-12 rounded-2xl bg-amber-400/15 border border-amber-400/40 text-amber-300 flex items-center justify-center mx-auto">
+      <div className="min-h-[420px] rounded-2xl bg-[#07150f] border border-amber-400/35 flex flex-col items-center justify-center gap-3 p-6 text-center max-w-xl mx-auto">
+        <div className="w-12 h-12 rounded-2xl bg-amber-400/15 border border-amber-400/40 text-amber-300 flex items-center justify-center">
           <MapPin className="w-6 h-6" />
         </div>
-        <h2 className="font-display text-lg font-bold text-white">GPS Google Maps</h2>
+        <h3 className="font-display text-lg font-bold text-white">
+          Configure a chave do Google Maps no servidor
+        </h3>
         <p className="text-xs text-emerald-200/80 leading-relaxed">
-          Para usar o GPS fora do ambiente de teste, adicione a variável de ambiente{' '}
-          <code className="font-mono text-amber-300">VITE_GOOGLE_MAPS_API_KEY</code> nas configurações da sua hospedagem (ex.: Vercel → Settings → Environment Variables) com sua chave do Google Maps Platform e faça um novo deploy.
+          Para ativar o mapa GPS fora do AI Studio (como na Vercel), adicione a variável de ambiente{' '}
+          <code className="px-1.5 py-0.5 rounded bg-black/60 text-amber-300">
+            VITE_GOOGLE_MAPS_API_KEY
+          </code>{' '}
+          em <strong>Settings → Environment Variables</strong> e faça um novo Redeploy.
         </p>
       </div>
     );
   }
 
   return (
-    <APIProvider
-      apiKey={resolvedApiKey}
-      language="pt-BR"
-      region="BR"
-      fetchAppCheckToken={fetchAppCheckToken}
-    >
-      <GpsInteractiveWorkspace
-        incomingRequest={incomingRequest}
-        onAskRobotAboutPlace={onAskRobotAboutPlace}
-        fetchAppCheckToken={fetchAppCheckToken}
-      />
+    <APIProvider apiKey={apiKey} language="pt-BR" region="BR" libraries={['places', 'routes', 'core']}>
+      <DukeGpsMapInner gpsRequest={gpsRequest} recaptchaSiteKey={recaptchaSiteKey} />
     </APIProvider>
   );
 };

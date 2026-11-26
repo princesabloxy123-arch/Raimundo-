@@ -1,31 +1,37 @@
-type VercelReq = {
+interface VercelRequestLike {
   method?: string;
-};
+}
 
-type VercelRes = {
-  status: (code: number) => VercelRes;
-  json: (data: unknown) => void;
+interface VercelResponseLike {
+  status: (code: number) => VercelResponseLike;
+  json: (payload: unknown) => void;
   setHeader: (name: string, value: string) => void;
-};
+}
 
-export default function handler(req: VercelReq, res: VercelRes) {
-  if (req.method && req.method !== 'GET') {
-    res.status(405).json({ error: 'Method not allowed' });
+export default function handler(req: VercelRequestLike, res: VercelResponseLike) {
+  res.setHeader('Cache-Control', 'no-store');
+
+  if (req.method !== 'GET') {
+    res.status(405).json({ error: 'Método não permitido. Use GET.' });
     return;
   }
 
   const apiKey = (
     process.env.VITE_GOOGLE_MAPS_API_KEY ||
     process.env.GOOGLE_MAPS_API_KEY ||
-    process.env.GOOGLE_MAPS_PLATFORM_KEY ||
     ''
   ).trim();
+
   const recaptchaSiteKey = (
     process.env.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY ||
     process.env.RECAPTCHA_ENTERPRISE_SITE_KEY ||
     ''
   ).trim();
 
-  res.setHeader('Cache-Control', 'no-store');
-  res.status(200).json({ apiKey, recaptchaSiteKey });
+  res.status(200).json({
+    ok: true,
+    configured: Boolean(apiKey),
+    apiKey,
+    recaptchaSiteKey,
+  });
 }

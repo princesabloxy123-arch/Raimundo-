@@ -528,7 +528,7 @@ export interface DukeEventRecord extends DukeEventSpec {
   updatedAt?: unknown;
 }
 
-export type DukeStudioMode = 'auto' | 'chat' | 'image' | 'video' | 'gps' | 'event';
+export type DukeStudioMode = 'auto' | 'chat' | 'image' | 'video' | 'event' | 'gps';
 
 export type DukeImageAspectRatio = '1:1' | '16:9' | '9:16' | '4:5';
 
@@ -703,13 +703,14 @@ export interface DukeGeneratedVideo {
 export type DukeGpsTravelMode = 'DRIVING' | 'WALKING' | 'BICYCLING' | 'TRANSIT';
 
 export interface DukeGpsRequest {
-  requestId?: string;
-  action: 'search' | 'route' | 'my_location';
+  intent: 'place' | 'route' | 'nearby';
   query: string;
-  originQuery?: string;
-  destinationQuery?: string;
+  origin?: string;
+  destination?: string;
   travelMode?: DukeGpsTravelMode;
+  placeId?: string;
   label?: string;
+  requestedAt?: string;
 }
 
 export interface DukeChatMessage {
@@ -717,7 +718,7 @@ export interface DukeChatMessage {
   role: 'user' | 'assistant';
   content: string;
   createdAt: string;
-  modeUsed?: 'chat' | 'image' | 'video' | 'gps' | 'event';
+  modeUsed?: 'chat' | 'image' | 'video' | 'event' | 'gps';
   publishedUrl?: string;
   attachmentPreview?: string;
   attachmentName?: string;

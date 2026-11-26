@@ -1,6 +1,6 @@
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 
-export type DukeStudioMode = 'auto' | 'chat' | 'image' | 'video' | 'gps' | 'event';
+export type DukeStudioMode = 'auto' | 'chat' | 'image' | 'video' | 'event' | 'gps';
 
 export type DukeEventTheme =
   | 'emerald_gold'
@@ -228,16 +228,18 @@ export interface DukeVideoSpec {
 export type DukeGpsTravelMode = 'DRIVING' | 'WALKING' | 'BICYCLING' | 'TRANSIT';
 
 export interface DukeGpsRequest {
-  action: 'search' | 'route' | 'my_location';
+  intent: 'place' | 'route' | 'nearby';
   query: string;
-  originQuery?: string;
-  destinationQuery?: string;
+  origin?: string;
+  destination?: string;
   travelMode?: DukeGpsTravelMode;
+  placeId?: string;
   label?: string;
+  requestedAt?: string;
 }
 
 export interface DukeChatResult {
-  modeUsed: 'chat' | 'image' | 'video' | 'gps' | 'event';
+  modeUsed: 'chat' | 'image' | 'video' | 'event' | 'gps';
   reply: string;
   shouldPublish: boolean;
   event?: DukeEventSpec;
@@ -682,13 +684,13 @@ function detectStudioMode(
   message: string,
   hasImageAttachment: boolean,
   hasCurrentEvent: boolean
-): 'chat' | 'image' | 'video' | 'gps' | 'event' {
+): 'chat' | 'image' | 'video' | 'event' | 'gps' {
   if (
     requestedMode === 'chat' ||
     requestedMode === 'image' ||
     requestedMode === 'video' ||
-    requestedMode === 'gps' ||
-    requestedMode === 'event'
+    requestedMode === 'event' ||
+    requestedMode === 'gps'
   ) {
     return requestedMode;
   }
@@ -698,9 +700,9 @@ function detectStudioMode(
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
 
-  // Explicit GPS / Google Maps / Location / Route intents
+  // Explicit GPS / Google Maps location & routing intents
   const gpsRegex =
-    /\b(gps|google maps|mapa|localizacao|localizar|onde fica|como chegar|rota|rotas|caminho para|trajeto|endereco de|buscar endereco|mostrar no mapa|mostre no mapa|mostra no mapa|abrir mapa|perto de mim|proximo de mim|minha localizacao|coordenadas|navegar ate|navegacao)\b/;
+    /\b(gps|google maps|mapa|mapas|localizacao|localizar|onde fica|como chegar|rota para|rotas|tracar rota|navegar|navegacao|direcoes|trajeto|coordenadas|latitude|longitude|perto de mim|proximo de mim|mais proximo|endereco de|mostrar no mapa|abrir no mapa|ponto no mapa)\b/;
 
   // Explicit AI Video generation intents
   const videoRegex =
@@ -716,7 +718,6 @@ function detectStudioMode(
   const codeOrTextRegex =
     /\b(codigo|html|css|javascript|typescript|react|python|sql|script|texto|redacao|artigo|sermao|pregacao|roteiro|legenda|copy|carta|contrato|email|e-mail|mensagem de whatsapp|explica|explique|como fazer|resuma|resumo|traduza|traducao|ideias|lista de)\b/;
 
-  // GPS intent wins when user asks for maps, routes, or locations
   if (gpsRegex.test(normalized) && !videoRegex.test(normalized) && !imageRegex.test(normalized)) {
     return 'gps';
   }
@@ -1276,42 +1277,6 @@ const GATEWAY_VIDEO_JSON_CONTRACT = `
 Responda EXCLUSIVAMENTE com um objeto JSON válido (sem texto extra) contendo "reply" e "videoSpec":
 {"reply":"string","videoSpec":{"title":"string","summary":"string","aspectRatio":"9:16","visualStyle":"cinematic_gold","musicMood":"epic_inspirational","voiceoverScript":"string","footerBrand":"CONAE • ROBÔ DUQUE IA","scenes":[{"sceneNumber":1,"durationSec":2.8,"badge":"DESTAQUE","headline":"string","subheadline":"string","ctaText":"","cameraMotion":"zoom_in","visualMotif":"beams","bgStart":"#041710","bgMid":"#0c3525","bgEnd":"#020a06","accentColor":"#fbbf24"}]}}`;
 
-const DUKE_GPS_RESPONSE_SCHEMA = {
-  type: Type.OBJECT,
-  properties: {
-    reply: { type: Type.STRING },
-    gpsRequest: {
-      type: Type.OBJECT,
-      properties: {
-        action: { type: Type.STRING, enum: ['search', 'route', 'my_location'] },
-        query: { type: Type.STRING },
-        originQuery: { type: Type.STRING },
-        destinationQuery: { type: Type.STRING },
-        travelMode: { type: Type.STRING, enum: ['DRIVING', 'WALKING', 'BICYCLING', 'TRANSIT'] },
-        label: { type: Type.STRING },
-      },
-      required: ['action', 'query'],
-    },
-  },
-  required: ['reply', 'gpsRequest'],
-};
-
-const SYSTEM_INSTRUCTION_GPS = `Você é o **Assistente de GPS e Navegação Google Maps do Robô Duque (ConaeDuque)**!
-Sua função é APENAS interpretar o pedido do cliente em português para acionar o **Mapa GPS oficial do Google Maps Platform** no painel ao lado.
-
-Regras obrigatórias de conformidade:
-1. **NUNCA invente ou chute endereços exatos, CEPs, coordenadas, telefones, horários ou avaliações** da memória. Todos os dados reais de locais e rotas serão buscados ao vivo diretamente na API oficial do Google Maps no painel GPS.
-2. Classifique \`gpsRequest.action\`:
-   - \`"route"\`: quando o cliente pedir rota, caminho, trajeto ou "como chegar" de um ponto A para um ponto B (preencha \`originQuery\` se informado, \`destinationQuery\` com o destino, e \`query\` com o destino). Se o cliente disser "como chegar em X" sem informar origem, deixe \`originQuery\` vazio para o GPS usar a localização atual do dispositivo.
-   - \`"my_location"\`: quando o cliente pedir "minha localização atual", "onde eu estou" ou ativar o GPS dele.
-   - \`"search"\`: quando o cliente pedir qualquer localização, endereço, cidade, hotel, restaurante, igreja, hospital, aeroporto, ponto turístico ou "perto de mim" (coloque o termo limpo em \`query\`, ex: "Avenida Paulista, São Paulo" ou "Hotéis em Goiânia").
-3. Escolha \`travelMode\`: \`"DRIVING"\` (padrão), \`"WALKING"\` (a pé), \`"TRANSIT"\` (ônibus/metrô/transporte público) ou \`"BICYCLING"\` (bicicleta).
-4. Em \`reply\`, responda em 1 a 2 frases curtas e diretas em português avisando que você abriu o **GPS Google Maps** e está buscando exatamente o local/rota solicitado ao vivo no mapa.`;
-
-const GATEWAY_GPS_JSON_CONTRACT = `
-Responda EXCLUSIVAMENTE com um objeto JSON válido (sem texto extra) contendo "reply" e "gpsRequest":
-{"reply":"string","gpsRequest":{"action":"search","query":"string","originQuery":"","destinationQuery":"","travelMode":"DRIVING","label":"string"}}`;
-
 const VERCEL_AI_GATEWAY_URL = 'https://ai-gateway.vercel.sh/v1/chat/completions';
 const GATEWAY_MODELS = ['google/gemini-2.5-flash', 'google/gemini-2.5-flash-lite'] as const;
 
@@ -1322,6 +1287,89 @@ Responda EXCLUSIVAMENTE com um objeto JSON válido (sem texto extra) contendo:
 const GATEWAY_IMAGE_JSON_CONTRACT = `
 Responda EXCLUSIVAMENTE com um objeto JSON válido (sem texto extra) contendo "reply", "imageDesign" e "imageVariants" (array com 3 opções distintas modificando a própria foto):
 {"reply":"string","imageDesign":{"title":"Opção 1 — Estúdio HDR na Foto","aspectRatio":"1:1","layout":"full_bleed","photoStyle":"studio_relight","relightPreset":"emerald_royal","bokehDepth":0.48,"hdrClarity":0.8,"lightFx":"prism_beams","graphicDesignOverlay":"editorial_lines","frameStyle":"luxury_bevel","decorativeMotif":"orbs","bgStart":"#041710","bgMid":"#0b3524","bgEnd":"#030b08","accentColor":"#f59e0b","textPrimary":"#ffffff","textMuted":"#d1fae5","badgeText":"","headline":"","subheadline":"","footerText":"","ctaText":"","brightness":1.08,"contrast":1.16,"saturate":1.2,"sepia":0,"hueRotate":0,"vignette":0.4,"tintColor":"#f59e0b","tintOpacity":0.09,"emblemType":"spark","textPosition":"bottom","fontStyle":"editorial","fontScale":1},"imageVariants":[...]}`;
+
+const DUKE_GPS_RESPONSE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    reply: {
+      type: Type.STRING,
+      description:
+        'Resposta curta e amigável em português confirmando que o pedido foi enviado ao mapa GPS do Google Maps ao vivo (NUNCA invente coordenadas, endereços, notas ou horários de memória).',
+    },
+    gpsRequest: {
+      type: Type.OBJECT,
+      properties: {
+        intent: { type: Type.STRING, enum: ['place', 'route', 'nearby'] },
+        query: { type: Type.STRING },
+        origin: { type: Type.STRING },
+        destination: { type: Type.STRING },
+        travelMode: { type: Type.STRING, enum: ['DRIVING', 'WALKING', 'BICYCLING', 'TRANSIT'] },
+        placeId: { type: Type.STRING },
+        label: { type: Type.STRING },
+      },
+      required: ['intent', 'query'],
+    },
+  },
+  required: ['reply', 'gpsRequest'],
+};
+
+const SYSTEM_INSTRUCTION_GPS = `Você é o **Assistente de Navegação GPS do Robô Duque (ConaeDuque)** integrado diretamente ao **Google Maps Platform**.
+Sua missão é interpretar o pedido de localização, busca de lugar próximo ou rota do cliente e preencher o objeto estruturado \`gpsRequest\` para que o mapa Google Maps ao vivo busque os dados REAIS via Places API (New) e Routes API.
+
+Regras obrigatórias (COMPLIANCE):
+1. **NUNCA invente coordenadas, endereços exatos, horários, telefones ou avaliações de memória.** Apenas extraia o termo limpo de busca/origem/destino e deixe o Google Maps Platform exibir os dados reais no mapa ao vivo.
+2. Classifique \`intent\`:
+   - \`"route"\`: quando o cliente pedir rota, trajeto, "como chegar de X para Y", distância ou direções. Preencha \`origin\` (se não informar origem, deixe vazio para usar o GPS atual do usuário), \`destination\`, \`query\` (ex: destino) e \`travelMode\` (\`DRIVING\`, \`WALKING\`, \`BICYCLING\` ou \`TRANSIT\`).
+   - \`"nearby"\`: quando o cliente pedir algo perto/próximo (ex: "hotéis perto de mim", "restaurantes próximos em Goiânia").
+   - \`"place"\`: para localizar qualquer cidade, endereço, igreja, hotel, aeroporto, ponto turístico, empresa ou lugar no mapa.
+3. Em \`label\`, escreva um título curto e claro (ex: "Rota para Aeroporto de Goiânia" ou "Localizar Macapá, AP").
+4. Em \`reply\`, confirme em 1 ou 2 frases em português que você abriu a busca no **GPS Google Maps ao vivo** do Robô Duque para trazer a localização/rota exata.`;
+
+const GATEWAY_GPS_JSON_CONTRACT = `
+Responda EXCLUSIVAMENTE com um objeto JSON válido (sem texto extra) contendo "reply" e "gpsRequest":
+{"reply":"string","gpsRequest":{"intent":"place","query":"string","origin":"","destination":"","travelMode":"DRIVING","placeId":"","label":"string"}}`;
+
+const VALID_GPS_INTENTS = new Set(['place', 'route', 'nearby']);
+const VALID_GPS_TRAVEL_MODES: ReadonlySet<DukeGpsTravelMode> = new Set([
+  'DRIVING',
+  'WALKING',
+  'BICYCLING',
+  'TRANSIT',
+]);
+
+function sanitizeGpsRequest(raw: unknown, userMessage: string): DukeGpsRequest {
+  const obj = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const intentRaw = typeof obj.intent === 'string' ? obj.intent.trim().toLowerCase() : 'place';
+  const intent: DukeGpsRequest['intent'] = VALID_GPS_INTENTS.has(intentRaw)
+    ? (intentRaw as DukeGpsRequest['intent'])
+    : 'place';
+  const travelRaw = typeof obj.travelMode === 'string' ? obj.travelMode.trim().toUpperCase() : 'DRIVING';
+  const travelMode: DukeGpsTravelMode = VALID_GPS_TRAVEL_MODES.has(travelRaw as DukeGpsTravelMode)
+    ? (travelRaw as DukeGpsTravelMode)
+    : 'DRIVING';
+
+  const fallbackQuery = userMessage
+    .replace(/^(mostre|mostrar|localize|localizar|encontre|encontrar|abrir|abra|quero ir|como chegar|rota para|onde fica|no mapa|no gps|pelo gps|no google maps)\s+/gi, '')
+    .trim()
+    .slice(0, 180) || 'Macapá, AP';
+
+  const query = clampString(obj.query, fallbackQuery, 180);
+  const origin = typeof obj.origin === 'string' ? obj.origin.trim().slice(0, 180) : '';
+  const destination = typeof obj.destination === 'string' ? obj.destination.trim().slice(0, 180) : '';
+  const placeId = typeof obj.placeId === 'string' ? obj.placeId.trim().slice(0, 140) : '';
+  const label = clampString(obj.label, destination || query, 90);
+
+  return {
+    intent,
+    query,
+    ...(origin ? { origin } : {}),
+    ...(destination ? { destination } : intent === 'route' ? { destination: query } : {}),
+    travelMode,
+    ...(placeId ? { placeId } : {}),
+    label,
+    requestedAt: new Date().toISOString(),
+  };
+}
 
 function isAuthError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err ?? '');
@@ -1890,31 +1938,18 @@ export async function runDukeEventChat(body: DukeChatRequestBody): Promise<DukeC
     };
   }
 
-  // MODE 4: GOOGLE MAPS GPS LOOKUP & ROUTE INTENT (LIVE CLIENT PLACES/ROUTES API)
+  // MODE 4: GPS GOOGLE MAPS NAVIGATION & LOCATION SEARCH
   if (resolvedMode === 'gps') {
     const promptText = [
-      '=== MODO: GPS GOOGLE MAPS (INTERPRETAR PEDIDO DE LOCALIZAÇÃO OU ROTA) ===',
+      '=== MODO: GPS GOOGLE MAPS (LOCALIZAÇÃO, BUSCA DE LUGARES E ROTAS AO VIVO) ===',
       historyBlock ? `=== HISTÓRICO RECENTE ===\n${historyBlock}\n` : '',
-      '=== PEDIDO DE LOCALIZAÇÃO / ROTA DO CLIENTE ===',
-      (userMessage || 'Ativar minha localização GPS atual no Google Maps.').slice(0, 1200),
+      '=== PEDIDO DE LOCALIZAÇÃO DO CLIENTE ===',
+      (userMessage || 'Mostrar localização no mapa GPS do Google Maps').slice(0, 1200),
     ]
       .filter(Boolean)
       .join('\n');
 
-    let gpsRequest: DukeGpsRequest = {
-      action: /\b(minha localizacao|onde estou|onde eu estou)\b/i.test(userMessage)
-        ? 'my_location'
-        : /\b(rota|como chegar|trajeto|caminho)\b/i.test(userMessage)
-          ? 'route'
-          : 'search',
-      query: userMessage
-        .replace(/^(mostre|mostra|mostrar|busque|busca|buscar|procure|procurar|ache|achar|onde fica|localizacao de|localizacao do|localizacao da|no mapa|no gps|pelo gps|pelo google maps)\s+/gi, '')
-        .trim() || userMessage || 'Goiânia, GO',
-      travelMode: 'DRIVING',
-      label: userMessage.slice(0, 80) || 'Busca GPS Google Maps',
-    };
-    let reply = `Abrindo o **GPS Google Maps** ao vivo para localizar **"${gpsRequest.query}"** no mapa interativo ao lado!`;
-
+    let parsed: { reply?: unknown; gpsRequest?: unknown } = {};
     try {
       const { text: rawJson } = await generateWithConfiguredAi({
         geminiKey,
@@ -1927,41 +1962,19 @@ export async function runDukeEventChat(body: DukeChatRequestBody): Promise<DukeC
         expectJson: true,
         deepThinking: false,
       });
-
-      const parsed = JSON.parse(rawJson) as { reply?: unknown; gpsRequest?: Record<string, unknown> };
-      const reqObj = parsed.gpsRequest || {};
-      const actionRaw = String(reqObj.action || '').trim();
-      const action: 'search' | 'route' | 'my_location' =
-        actionRaw === 'route' || actionRaw === 'my_location' ? actionRaw : 'search';
-      const travelRaw = String(reqObj.travelMode || 'DRIVING').toUpperCase();
-      const travelMode: DukeGpsTravelMode =
-        travelRaw === 'WALKING' || travelRaw === 'BICYCLING' || travelRaw === 'TRANSIT'
-          ? travelRaw
-          : 'DRIVING';
-      const cleanQuery = clampString(reqObj.query, gpsRequest.query, 200);
-      const originQuery = clampString(reqObj.originQuery, '', 200) || undefined;
-      const destinationQuery = clampString(reqObj.destinationQuery, action === 'route' ? cleanQuery : '', 200) || undefined;
-
-      gpsRequest = {
-        action,
-        query: cleanQuery,
-        originQuery,
-        destinationQuery,
-        travelMode,
-        label: clampString(reqObj.label, cleanQuery, 90),
-      };
-      reply = clampString(
-        parsed.reply,
-        action === 'my_location'
-          ? 'Ativei a aba **GPS Google Maps** para localizar sua posição atual em tempo real no mapa.'
-          : action === 'route'
-            ? `Abri o **GPS Google Maps** para traçar a rota ao vivo até **${destinationQuery || cleanQuery}**.`
-            : `Buscando **${cleanQuery}** ao vivo no **GPS Google Maps**! Confira os marcadores, endereços reais e rotas no mapa ao lado.`,
-        1200
-      );
+      parsed = JSON.parse(rawJson) as { reply?: unknown; gpsRequest?: unknown };
     } catch {
-      // Keep deterministic gpsRequest fallback so the live Google Maps SDK executes immediately
+      parsed = {};
     }
+
+    const gpsRequest = sanitizeGpsRequest(parsed.gpsRequest, userMessage);
+    const reply = clampString(
+      parsed.reply,
+      gpsRequest.intent === 'route'
+        ? `Abri o **GPS Google Maps** para traçar a rota até **${gpsRequest.destination || gpsRequest.query}** ao vivo no mapa.`
+        : `Busquei **${gpsRequest.label || gpsRequest.query}** diretamente no **GPS Google Maps** ao vivo para você visualizar o ponto, detalhes e traçar rota.`,
+      1600
+    );
 
     return {
       modeUsed: 'gps',
@@ -1971,22 +1984,22 @@ export async function runDukeEventChat(body: DukeChatRequestBody): Promise<DukeC
       quickOptions: [
         {
           label: 'Traçar Rota de Carro',
-          prompt: `Trace a rota de carro no GPS Google Maps até ${gpsRequest.destinationQuery || gpsRequest.query}`,
+          prompt: `Traçar rota de carro pelo GPS Google Maps até ${gpsRequest.destination || gpsRequest.query}`,
           mode: 'gps',
         },
         {
-          label: 'Minha Localização GPS',
-          prompt: 'Mostre minha localização GPS atual no Google Maps.',
-          mode: 'gps',
-        },
-        {
-          label: 'Hotéis Próximos',
-          prompt: `Busque hotéis próximos de ${gpsRequest.query} no GPS Google Maps`,
+          label: 'Hotéis Perto Daqui',
+          prompt: `Mostrar hotéis próximos de ${gpsRequest.destination || gpsRequest.query} no mapa GPS`,
           mode: 'gps',
         },
         {
           label: 'Restaurantes Próximos',
-          prompt: `Busque restaurantes próximos de ${gpsRequest.query} no GPS Google Maps`,
+          prompt: `Encontrar restaurantes próximos de ${gpsRequest.destination || gpsRequest.query} no mapa GPS`,
+          mode: 'gps',
+        },
+        {
+          label: 'Rota a Pé',
+          prompt: `Traçar rota a pé pelo GPS até ${gpsRequest.destination || gpsRequest.query}`,
           mode: 'gps',
         },
       ],
@@ -2093,7 +2106,7 @@ export default async function handler(req: VercelRequestLike, res: VercelRespons
       ok: true,
       service: 'conae-duque-evento',
       aiConfigured: Boolean(geminiKey || gatewayToken),
-      modes: ['auto', 'chat', 'image', 'video', 'gps', 'event'],
+      modes: ['auto', 'chat', 'image', 'video', 'event', 'gps'],
     });
     return;
   }

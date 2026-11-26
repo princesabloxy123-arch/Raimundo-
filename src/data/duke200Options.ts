@@ -1,9 +1,9 @@
 import type { DukeStudioMode } from '../types';
 
 export type DukeOptionCategory =
+  | 'GPS Maps'
   | 'Vídeos IA'
   | 'Fotos & Artes'
-  | 'GPS Maps'
   | 'Eventos & Links'
   | 'WhatsApp & Redes'
   | 'Igreja & Ministério'
@@ -23,9 +23,9 @@ export interface DukeCatalogOption {
 }
 
 export const DUKE_OPTION_CATEGORIES: DukeOptionCategory[] = [
+  'GPS Maps',
   'Vídeos IA',
   'Fotos & Artes',
-  'GPS Maps',
   'Eventos & Links',
   'Códigos & Sites',
   'WhatsApp & Redes',
@@ -300,34 +300,34 @@ const VIDEO_IA_SEEDS: RawOptionSeed[] = [
 ];
 
 const GPS_MAPS_SEEDS: RawOptionSeed[] = [
-  ['Minha Localização GPS Agora', 'Mostra exatamente onde estou no Google Maps', 'Mostre minha localização GPS atual no Google Maps ao vivo.'],
-  ['Centro de Convenções de Goiânia', 'Localiza endereço exato e rota no GPS', 'Localize no GPS do Google Maps o Centro de Convenções de Goiânia GO.'],
-  ['Aeroporto de Goiânia (Santa Genoveva)', 'Localização e rota até o aeroporto', 'Localize no Google Maps o Aeroporto de Goiânia Santa Genoveva e prepare a rota de carro.'],
-  ['Aeroporto de Guarulhos (GRU)', 'Localização ao vivo e rota no GPS', 'Localize no GPS do Google Maps o Aeroporto Internacional de Guarulhos em São Paulo.'],
-  ['Aeroporto de Brasília (BSB)', 'Localiza terminal e traça trajeto no mapa', 'Mostre no GPS do Google Maps o Aeroporto Internacional de Brasília.'],
-  ['Avenida Paulista — São Paulo', 'Localização central com pontos próximos', 'Localize no Google Maps a Avenida Paulista em São Paulo SP.'],
-  ['Hotéis Próximos ao Centro de Goiânia', 'Encontra hospedagens reais no mapa', 'Busque no GPS do Google Maps hotéis próximos ao Centro de Goiânia GO.'],
-  ['Igrejas Próximas em Goiânia', 'Busca templos e endereços no mapa ao vivo', 'Busque no Google Maps igrejas evangélicas em Goiânia GO.'],
-  ['Hospitais e Pronto-Socorro Próximos', 'Localiza atendimento médico no GPS', 'Busque no GPS do Google Maps hospitais e pronto-socorro próximos à minha localização.'],
-  ['Farmácias 24 Horas Próximas', 'Encontra farmácias abertas no mapa', 'Localize no Google Maps farmácias 24 horas perto de mim.'],
-  ['Postos de Combustível Próximos', 'Mostra postos na região pelo GPS', 'Localize no GPS do Google Maps postos de combustível próximos.'],
-  ['Restaurantes Bem Avaliados Próximos', 'Busca restaurantes reais no Google Maps', 'Encontre restaurantes bem avaliados perto de mim no Google Maps.'],
-  ['Rota Goiânia → Brasília de Carro', 'Traça rota completa com tempo e distância', 'Trace a rota de carro no GPS do Google Maps de Goiânia GO até Brasília DF.'],
-  ['Rota São Paulo → Rio de Janeiro', 'Caminho completo no mapa GPS', 'Trace a rota de carro no Google Maps de São Paulo SP até Rio de Janeiro RJ.'],
-  ['Rota Goiânia → Caldas Novas', 'Trajeto turístico com distância e tempo', 'Trace a rota de carro no GPS do Google Maps de Goiânia GO até Caldas Novas GO.'],
-  ['Rodoviária de Goiânia', 'Localiza terminal rodoviário no mapa', 'Mostre no GPS do Google Maps a Rodoviária de Goiânia GO.'],
-  ['Shopping Flamboyant — Goiânia', 'Localização e rota até o shopping', 'Localize no Google Maps o Flamboyant Shopping Center em Goiânia GO.'],
-  ['Esplanada dos Ministérios — Brasília', 'Ponto oficial no mapa interativo', 'Mostre no GPS do Google Maps a Esplanada dos Ministérios em Brasília DF.'],
-  ['Cristo Redentor — Rio de Janeiro', 'Ponto turístico com rota no GPS', 'Localize no Google Maps o Cristo Redentor no Rio de Janeiro RJ.'],
-  ['Praia de Copacabana — Rio de Janeiro', 'Localização exata na orla pelo GPS', 'Mostre no Google Maps a Praia de Copacabana no Rio de Janeiro RJ.'],
-  ['Cataratas do Iguaçu — Foz do Iguaçu', 'Parque Nacional no mapa ao vivo', 'Localize no GPS do Google Maps as Cataratas do Iguaçu em Foz do Iguaçu PR.'],
-  ['Gramado — Serra Gaúcha (RS)', 'Centro turístico no Google Maps', 'Mostre no GPS do Google Maps o centro de Gramado no Rio Grande do Sul.'],
-  ['Bancos e Caixas Eletrônicos Próximos', 'Encontra agências perto de você', 'Busque no GPS do Google Maps agências bancárias e caixas eletrônicos próximos.'],
-  ['Supermercados Próximos no GPS', 'Localiza mercados na sua região', 'Encontre supermercados próximos no GPS do Google Maps.'],
-  ['Estacionamentos Próximos no Mapa', 'Mostra estacionamentos disponíveis', 'Localize estacionamentos próximos no GPS do Google Maps.'],
+  ['Localizar Macapá, AP no Mapa', 'Abre o ponto central de Macapá-AP no GPS Google Maps', 'Mostrar Macapá, Amapá no GPS Google Maps'],
+  ['Centro de Convenções de Goiânia', 'Localiza o Centro de Convenções GO com rota ao vivo', 'Localizar Centro de Convenções de Goiânia no GPS Google Maps'],
+  ['Aeroporto de Goiânia (GYN)', 'Localização e rota de carro até o Aeroporto Santa Genoveva', 'Traçar rota de carro no GPS Google Maps para Aeroporto Internacional de Goiânia'],
+  ['Aeroporto Internacional de Macapá', 'Localiza e traça rota até o Aeroporto Alberto Alcolumbre', 'Localizar Aeroporto Internacional de Macapá no GPS Google Maps'],
+  ['Hotéis Próximos em Goiânia', 'Encontra hotéis disponíveis na região no mapa GPS', 'Mostrar hotéis próximos em Goiânia, GO no GPS Google Maps'],
+  ['Hotéis Próximos em Macapá', 'Busca hotéis na cidade de Macapá-AP pelo Google Maps', 'Mostrar hotéis próximos em Macapá, AP no GPS Google Maps'],
+  ['Hotéis em São Paulo (Av. Paulista)', 'Localiza opções de hospedagem perto da Av. Paulista', 'Mostrar hotéis perto da Avenida Paulista, São Paulo no GPS Google Maps'],
+  ['Igrejas Próximas no Mapa', 'Localiza igrejas evangélicas próximas pelo GPS', 'Mostrar igrejas evangélicas próximas no GPS Google Maps'],
+  ['Restaurantes Próximos Agora', 'Busca restaurantes bem avaliados perto da região', 'Encontrar restaurantes próximos no GPS Google Maps'],
+  ['Hospitais e Clínicas Próximas', 'Localiza pronto-socorro e hospitais no mapa ao vivo', 'Localizar hospitais e clínicas próximas no GPS Google Maps'],
+  ['Farmácias 24h Próximas', 'Encontra farmácias abertas na região pelo Google Maps', 'Encontrar farmácias 24 horas próximas no GPS Google Maps'],
+  ['Postos de Combustível Próximos', 'Localiza postos de gasolina no trajeto pelo GPS', 'Mostrar postos de combustível próximos no GPS Google Maps'],
+  ['Bancos e Caixas Eletrônicos', 'Localiza agências bancárias e caixas 24h no mapa', 'Localizar bancos e caixas eletrônicos próximos no GPS Google Maps'],
+  ['Supermercados Próximos', 'Encontra supermercados e atacarejos no GPS Google Maps', 'Mostrar supermercados próximos no GPS Google Maps'],
+  ['Shopping Flamboyant (Goiânia)', 'Localiza e traça rota até o Shopping Flamboyant', 'Localizar Flamboyant Shopping Center, Goiânia no GPS Google Maps'],
+  ['Fortaleza de São José de Macapá', 'Ponto histórico no mapa GPS de Macapá-AP', 'Localizar Fortaleza de São José de Macapá no GPS Google Maps'],
+  ['Marco Zero do Equador (Macapá)', 'Localiza o Monumento Marco Zero no mapa GPS', 'Localizar Marco Zero do Equador, Macapá, AP no GPS Google Maps'],
+  ['Aeroporto de Guarulhos (GRU)', 'Localização e rota até o Aeroporto de Guarulhos SP', 'Traçar rota de carro no GPS Google Maps para Aeroporto Internacional de Guarulhos'],
+  ['Aeroporto de Brasília (BSB)', 'Localiza e traça rota até o Aeroporto de Brasília DF', 'Traçar rota de carro no GPS Google Maps para Aeroporto Internacional de Brasília'],
+  ['Rodoviária de Goiânia', 'Mostra localização e rota de acesso à Rodoviária', 'Localizar Terminal Rodoviário de Goiânia no GPS Google Maps'],
+  ['Praça Cívica de Goiânia', 'Ponto central histórico de Goiânia no mapa ao vivo', 'Localizar Praça Cívica, Goiânia, GO no GPS Google Maps'],
+  ['Cristo Redentor (Rio de Janeiro)', 'Localiza o ponto turístico no mapa Google Maps', 'Localizar Cristo Redentor, Rio de Janeiro no GPS Google Maps'],
+  ['Esplanada dos Ministérios (DF)', 'Localiza Brasília-DF no mapa GPS ao vivo', 'Localizar Esplanada dos Ministérios, Brasília, DF no GPS Google Maps'],
+  ['Catedral Metropolitana de Belém', 'Localiza Belém do Pará no GPS Google Maps', 'Localizar Catedral Metropolitana de Belém, PA no GPS Google Maps'],
+  ['Estacionamentos Próximos', 'Busca estacionamentos perto do destino no mapa', 'Encontrar estacionamentos próximos no GPS Google Maps'],
 ];
 
-// Combinatorial matrices: 500 video options + 175 GPS Maps options + 10,000 options across 8 categories = 10,675 unique options!
+// Combinatorial matrices: 175 GPS Maps options + 500 video options + 10,000 options across 8 categories = 10,675 exact unique options!
 interface CategoryMatrix {
   category: DukeOptionCategory;
   mode: DukeStudioMode;
@@ -339,6 +339,43 @@ interface CategoryMatrix {
 }
 
 const MATRICES: CategoryMatrix[] = [
+  {
+    category: 'GPS Maps',
+    mode: 'gps',
+    seeds: GPS_MAPS_SEEDS,
+    // 15 bases × 10 modifiers = 150 + 25 flagship seeds = 175 exact GPS Maps options!
+    bases: [
+      'Hotéis 5 Estrelas em',
+      'Centros de Convenções em',
+      'Aeroporto de',
+      'Restaurantes Recomendados em',
+      'Hospitais & Pronto-Socorro em',
+      'Farmácias 24h em',
+      'Igrejas & Auditórios em',
+      'Shoppings & Comércio em',
+      'Rodoviária & Transporte em',
+      'Pontos Turísticos de',
+      'Postos de Gasolina em',
+      'Supermercados & Atacado em',
+      'Bancos & Agências em',
+      'Rota de Carro para o Centro de',
+      'Clubes & Espaços de Eventos em',
+    ],
+    modifiers: [
+      'Macapá, AP',
+      'Goiânia, GO',
+      'São Paulo, SP',
+      'Brasília, DF',
+      'Rio de Janeiro, RJ',
+      'Belém, PA',
+      'Manaus, AM',
+      'Belo Horizonte, MG',
+      'Curitiba, PR',
+      'Salvador, BA',
+    ],
+    makeDescription: (base, mod) => `Busca ao vivo no GPS Google Maps: ${base} ${mod}`,
+    makePrompt: (base, mod) => `Localizar no GPS Google Maps: ${base} ${mod}`,
+  },
   {
     category: 'Vídeos IA',
     mode: 'video',
@@ -395,44 +432,6 @@ const MATRICES: CategoryMatrix[] = [
     makeDescription: (base, mod) => `Vídeo HD com 4 cenas animadas e trilha: ${base} — ${mod}`,
     makePrompt: (base, mod) =>
       `Analise este pedido e gere um vídeo animado HD completo em 4 cenas com trilha musical e narração em português: "${base} — ${mod}".`,
-  },
-  {
-    category: 'GPS Maps',
-    mode: 'gps',
-    seeds: GPS_MAPS_SEEDS,
-    // 15 bases × 10 cities = 150 + 25 seeds = 175 GPS Maps options
-    bases: [
-      'Hotéis no GPS em',
-      'Centros de Convenções em',
-      'Aeroporto e Rota em',
-      'Igrejas e Templos em',
-      'Restaurantes no Mapa em',
-      'Hospitais e Clínicas em',
-      'Shoppings e Comércio em',
-      'Pontos Turísticos em',
-      'Rodoviária e Transporte em',
-      'Farmácias 24h em',
-      'Postos de Combustível em',
-      'Auditórios para Eventos em',
-      'Praças e Parques em',
-      'Bancos e Caixas em',
-      'Rota de Carro até',
-    ],
-    modifiers: [
-      'Goiânia GO',
-      'Brasília DF',
-      'São Paulo SP',
-      'Rio de Janeiro RJ',
-      'Belo Horizonte MG',
-      'Curitiba PR',
-      'Salvador BA',
-      'Fortaleza CE',
-      'Recife PE',
-      'Porto Alegre RS',
-    ],
-    makeDescription: (base, mod) => `Busca ao vivo no Google Maps GPS: ${base} ${mod}`,
-    makePrompt: (base, mod) =>
-      `Use o GPS do Google Maps para localizar e mostrar no mapa: "${base} ${mod}".`,
   },
   {
     category: 'Fotos & Artes',

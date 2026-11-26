@@ -3823,9 +3823,9 @@ function GmpQuotaBanner() {
   const [quotaExceeded, setQuotaExceeded] = useState(false);
 
   useEffect(() => {
-    const onQuotaExceeded = () => setQuotaExceeded(true);
-    window.addEventListener('gmp-quota-exceeded', onQuotaExceeded);
-    return () => window.removeEventListener('gmp-quota-exceeded', onQuotaExceeded);
+    const onQuota = () => setQuotaExceeded(true);
+    window.addEventListener('gmp-quota-exceeded', onQuota);
+    return () => window.removeEventListener('gmp-quota-exceeded', onQuota);
   }, []);
 
   if (!quotaExceeded) return null;

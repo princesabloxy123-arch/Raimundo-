@@ -92,8 +92,8 @@ import {
 } from '../data/duke200Options';
 import { compressDataUrlForFirestoreBanner, renderDukeImageStudio } from '../utils/dukeImageStudio';
 import { renderDukeVideoStudio } from '../utils/dukeVideoStudio';
-import { DukeRichMessage } from './DukeRichMessage';
 import { DukeGpsMapPanel } from './DukeGpsMapPanel';
+import { DukeRichMessage } from './DukeRichMessage';
 import { buildStandaloneEventHtml, PublicEventPage } from './PublicEventPage';
 
 interface DuqueEventoStudioProps {
@@ -110,10 +110,10 @@ const CONAE_AI_BRAIN_3D = '/src/assets/images/conae_ai_brain_3d_1795638395875.jp
 
 const MODE_OPTIONS: Array<{ id: DukeStudioMode; label: string }> = [
   { id: 'auto', label: 'Automático' },
+  { id: 'gps', label: 'GPS Maps' },
   { id: 'chat', label: 'Texto & Código' },
   { id: 'image', label: 'Foto & Arte' },
   { id: 'video', label: 'Vídeo IA' },
-  { id: 'gps', label: 'GPS Maps' },
   { id: 'event', label: 'Evento & Link' },
 ];
 
@@ -214,7 +214,7 @@ const WELCOME_MESSAGE: DukeChatMessage = {
   role: 'assistant',
   createdAt: new Date().toISOString(),
   content:
-    'Olá! Sou o **Robô Duque da CONAE**. Busco no **Google automaticamente**, crio **Vídeos IA em HD prontos para assistir e baixar** (com **500 opções de vídeo** + conversão de qualquer uma das **10.000 opções**), tenho **GPS Google Maps ao vivo** para localizar qualquer endereço ou rota, e transformo suas fotos em **3 opções modernas** na hora!',
+    'Olá! Sou o **Robô Duque da CONAE**. Busco no **Google automaticamente**, crio **Vídeos IA em HD prontos para assistir e baixar** (com **500 opções de vídeo** + conversão de qualquer uma das **10.000 opções**), transformo suas fotos em **3 opções modernas** na hora e monto eventos completos com link oficial!',
 };
 
 export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
@@ -247,7 +247,6 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const [renderingVideo, setRenderingVideo] = useState(false);
   const [videoRenderProgress, setVideoRenderProgress] = useState(0);
-  const [activeGpsRequest, setActiveGpsRequest] = useState<DukeGpsRequest | null>(null);
   const [selectedChatVariantByMsg, setSelectedChatVariantByMsg] = useState<Record<string, number>>({});
   const [showOriginalCompare, setShowOriginalCompare] = useState(false);
   const [updatingLiveImage, setUpdatingLiveImage] = useState(false);
@@ -256,6 +255,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
   const [appliedBannerId, setAppliedBannerId] = useState<string | null>(null);
 
   const [myEvents, setMyEvents] = useState<DukeEventRecord[]>([]);
+  const [activeGpsRequest, setActiveGpsRequest] = useState<DukeGpsRequest | null>(null);
   const [rightTab, setRightTab] = useState<'preview' | 'image' | 'video' | 'gps' | 'publish' | 'saved'>('preview');
   const [mobilePane, setMobilePane] = useState<'chat' | 'workspace'>('chat');
   const [copiedLink, setCopiedLink] = useState(false);
@@ -312,12 +312,12 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
     setShow200Catalog(true);
 
     const mappedCategory: 'Todas' | 'Texto & Código' | DukeOptionCategory =
-      nextMode === 'video'
-        ? 'Vídeos IA'
-        : nextMode === 'image'
-          ? 'Fotos & Artes'
-          : nextMode === 'gps'
-            ? 'GPS Maps'
+      nextMode === 'gps'
+        ? 'GPS Maps'
+        : nextMode === 'video'
+          ? 'Vídeos IA'
+          : nextMode === 'image'
+            ? 'Fotos & Artes'
             : nextMode === 'event'
               ? 'Eventos & Links'
               : nextMode === 'chat'
@@ -349,12 +349,13 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
     setCatalogCategory(nextCat);
     if (nextCat === 'Todas') {
       setStudioMode('auto');
+    } else if (nextCat === 'GPS Maps') {
+      setStudioMode('gps');
+      setRightTab('gps');
     } else if (nextCat === 'Vídeos IA') {
       setStudioMode('video');
     } else if (nextCat === 'Fotos & Artes') {
       setStudioMode('image');
-    } else if (nextCat === 'GPS Maps') {
-      setStudioMode('gps');
     } else if (nextCat === 'Eventos & Links') {
       setStudioMode('event');
     } else {
@@ -778,7 +779,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
       const rawText = await response.text();
       let payload: {
         error?: string;
-        modeUsed?: 'chat' | 'image' | 'video' | 'gps' | 'event';
+        modeUsed?: 'chat' | 'image' | 'video' | 'event' | 'gps';
         reply?: string;
         shouldPublish?: boolean;
         event?: DukeEventSpec;
@@ -792,7 +793,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
       try {
         payload = JSON.parse(rawText) as {
           error?: string;
-          modeUsed?: 'chat' | 'image' | 'video' | 'gps' | 'event';
+          modeUsed?: 'chat' | 'image' | 'video' | 'event' | 'gps';
           reply?: string;
           shouldPublish?: boolean;
           event?: DukeEventSpec;
@@ -822,10 +823,10 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
 
       const modeUsed =
         payload.modeUsed ||
-        (payload.videoSpec
-          ? 'video'
-          : payload.gpsRequest
-            ? 'gps'
+        (payload.gpsRequest
+          ? 'gps'
+          : payload.videoSpec
+            ? 'video'
             : payload.imageDesign
               ? 'image'
               : payload.event
@@ -835,9 +836,17 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
       let generatedImage: DukeGeneratedAsset | undefined;
       let generatedBatch: DukeGeneratedAsset[] | undefined;
       let generatedVideo: DukeGeneratedVideo | undefined;
-      let resolvedGpsRequest: DukeGpsRequest | undefined;
+      let gpsRequest: DukeGpsRequest | undefined;
 
-      if (modeUsed === 'video' && payload.videoSpec) {
+      if (modeUsed === 'gps' && payload.gpsRequest) {
+        gpsRequest = {
+          ...payload.gpsRequest,
+          requestedAt: payload.gpsRequest.requestedAt || new Date().toISOString(),
+        };
+        setActiveGpsRequest(gpsRequest);
+        setRightTab('gps');
+        setMobilePane('workspace');
+      } else if (modeUsed === 'video' && payload.videoSpec) {
         const sourcePhotoUrl =
           activeAttachment?.isImage && activeAttachment.dataUrl
             ? activeAttachment.dataUrl
@@ -871,14 +880,6 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
           setRenderingVideo(false);
           setVideoRenderProgress(0);
         }
-      } else if (modeUsed === 'gps' && payload.gpsRequest) {
-        resolvedGpsRequest = {
-          ...payload.gpsRequest,
-          requestId: `gps_${Date.now()}`,
-        };
-        setActiveGpsRequest(resolvedGpsRequest);
-        setRightTab('gps');
-        setMobilePane('workspace');
       } else if (modeUsed === 'image' && (payload.imageVariants?.length || payload.imageDesign)) {
         const specsToRender =
           Array.isArray(payload.imageVariants) && payload.imageVariants.length > 0
@@ -941,17 +942,15 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
           payload.reply ||
           (modeUsed === 'video'
             ? 'Pronto! Seu vídeo em HD foi renderizado e está liberado para assistir e baixar abaixo.'
-            : modeUsed === 'gps'
-              ? 'Abri o GPS Google Maps ao vivo no painel ao lado com a localização solicitada.'
-              : modeUsed === 'image'
-                ? 'Pronto! Criei 3 opções modernas em alta definição para você escolher.'
-                : 'Pronto! Veja as opções abaixo.'),
+            : modeUsed === 'image'
+              ? 'Pronto! Criei 3 opções modernas em alta definição para você escolher.'
+              : 'Pronto! Veja as opções abaixo.'),
         createdAt: new Date().toISOString(),
         publishedUrl,
         generatedImage,
         generatedImages: generatedBatch,
         generatedVideo,
-        gpsRequest: resolvedGpsRequest,
+        gpsRequest,
         sources: Array.isArray(payload.sources) && payload.sources.length > 0 ? payload.sources : undefined,
         quickOptions:
           Array.isArray(payload.quickOptions) && payload.quickOptions.length > 0
@@ -1511,22 +1510,6 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
         <button
           type="button"
           onClick={() => {
-            if (rightTab === 'gps') {
-              setRightTab(generatedVideos.length > 0 ? 'video' : generatedImages.length > 0 ? 'image' : 'preview');
-            }
-            setMobilePane('workspace');
-          }}
-          className={`py-2.5 text-xs font-bold cursor-pointer ${
-            mobilePane === 'workspace' && rightTab !== 'gps'
-              ? 'text-amber-300 border-b-2 border-amber-400 bg-amber-400/10'
-              : 'text-emerald-200/70'
-          }`}
-        >
-          Estúdio {generatedVideos.length > 0 ? `(${generatedVideos.length} Víd)` : currentEvent ? '✓' : ''}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
             setRightTab('gps');
             setMobilePane('workspace');
           }}
@@ -1538,6 +1521,20 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
         >
           <MapPin className="w-3.5 h-3.5" />
           <span>GPS Maps</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (rightTab === 'gps') setRightTab('preview');
+            setMobilePane('workspace');
+          }}
+          className={`py-2.5 text-xs font-bold cursor-pointer ${
+            mobilePane === 'workspace' && rightTab !== 'gps'
+              ? 'text-amber-300 border-b-2 border-amber-400 bg-amber-400/10'
+              : 'text-emerald-200/70'
+          }`}
+        >
+          Estúdio {generatedVideos.length > 0 ? `(${generatedVideos.length} Víd)` : currentEvent ? '✓' : ''}
         </button>
       </div>
 
@@ -1797,35 +1794,29 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                   )}
 
                   {msg.gpsRequest && (
-                    <div className="rounded-xl bg-emerald-950/60 border border-emerald-400/45 p-2.5 flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <MapPin className="w-4 h-4 text-amber-300 shrink-0" />
-                        <div className="min-w-0">
-                          <p className="text-[11px] font-bold text-amber-200 truncate">
-                            GPS Google Maps: {msg.gpsRequest.label || msg.gpsRequest.query}
-                          </p>
-                          <p className="text-[10px] text-emerald-200/80">
-                            {msg.gpsRequest.action === 'route'
-                              ? 'Rota ativa no mapa GPS'
-                              : msg.gpsRequest.action === 'my_location'
-                                ? 'Localização atual em tempo real'
-                                : 'Busca ao vivo no Google Maps'}
-                          </p>
-                        </div>
+                    <div className="rounded-xl overflow-hidden border border-emerald-400/45 bg-emerald-950/45 p-2.5 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300 inline-flex items-center gap-1">
+                          <MapPin className="w-3.5 h-3.5" />
+                          GPS Google Maps · {msg.gpsRequest.intent === 'route' ? 'Rota ao vivo' : 'Localização'}
+                        </span>
                       </div>
+                      <p className="text-xs font-semibold text-white">
+                        {msg.gpsRequest.label || msg.gpsRequest.destination || msg.gpsRequest.query}
+                      </p>
                       <button
                         type="button"
                         onClick={() => {
                           setActiveGpsRequest({
                             ...msg.gpsRequest!,
-                            requestId: `gps_reopen_${Date.now()}`,
+                            requestedAt: new Date().toISOString(),
                           });
                           setRightTab('gps');
                           setMobilePane('workspace');
                         }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-[11px] cursor-pointer shrink-0"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-xs cursor-pointer"
                       >
-                        <MapPin className="w-3 h-3" />
+                        <MapPin className="w-3.5 h-3.5" />
                         <span>Abrir no Mapa GPS</span>
                       </button>
                     </div>
@@ -1973,7 +1964,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                       type="text"
                       value={catalogSearch}
                       onChange={(e) => setCatalogSearch(e.target.value)}
-                      placeholder="Filtrar opções (ex: vídeo, foto, gps, rota, convite, igreja, código)..."
+                      placeholder="Filtrar opções (ex: vídeo, foto, convite, igreja, loja, código)..."
                       className="w-full rounded-xl bg-black/55 border border-amber-400/25 focus:border-amber-400 pl-8 pr-7 py-1.5 text-xs text-white placeholder:text-emerald-200/45 focus:outline-none"
                     />
                     {catalogSearch && (
@@ -2146,7 +2137,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                                   >
                                     {isVideoItem && <Film className="w-3 h-3" />}
                                     {isGpsItem && <MapPin className="w-3 h-3" />}
-                                    <span>{isVideoItem ? 'Criar Vídeo' : isGpsItem ? 'Abrir GPS' : 'Fazer'}</span>
+                                    <span>{isVideoItem ? 'Criar Vídeo' : isGpsItem ? 'Ver Mapa' : 'Fazer'}</span>
                                   </button>
                                 </div>
                               </div>
@@ -3547,14 +3538,12 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
             )}
 
             {rightTab === 'gps' && (
-              <DukeGpsMapPanel
-                incomingRequest={activeGpsRequest}
-                onAskRobotAboutPlace={(prompt) => {
-                  setStudioMode('chat');
-                  setMobilePane('chat');
-                  void handleSendMessage(prompt, 'chat');
-                }}
-              />
+              <div className="max-w-5xl mx-auto">
+                <DukeGpsMapPanel
+                  gpsRequest={activeGpsRequest}
+                  onRequestChange={(next) => setActiveGpsRequest(next)}
+                />
+              </div>
             )}
 
             {rightTab === 'publish' && (
