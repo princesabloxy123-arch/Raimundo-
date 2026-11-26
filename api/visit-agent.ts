@@ -1,6 +1,10 @@
 export type VisitAgentProvider = 'meta_cloud' | 'callmebot' | 'webhook' | 'none';
 export type VisitAgentWhatsAppStatus = 'enviado' | 'aguardando_chave' | 'erro' | 'cooldown';
-export type VisitAgentLocationSource = 'server_geo' | 'user_consented' | 'timezone_approx';
+export type VisitAgentLocationSource =
+  | 'gps_consented'
+  | 'server_geo'
+  | 'user_consented'
+  | 'timezone_approx';
 export type VisitAgentDeviceType = 'Celular' | 'Tablet' | 'Computador' | 'Desconhecido';
 export type VisitAgentEventType = 'app_open' | 'tab_view' | 'route_view' | 'test_alert';
 
@@ -13,11 +17,16 @@ export interface VisitAgentRequestBody {
   routePath?: string;
   pageUrl?: string;
   deviceType?: VisitAgentDeviceType;
+  deviceSpecs?: string;
+  protocol?: string;
   visitorLabel?: string;
   timezone?: string;
   consentedCity?: string;
   consentedState?: string;
   consentedCountry?: string;
+  latitude?: number;
+  longitude?: number;
+  locationAccuracyM?: number;
 }
 
 export interface VisitAgentNormalizedEvent {
@@ -27,6 +36,12 @@ export interface VisitAgentNormalizedEvent {
   state: string;
   country: string;
   locationSource: VisitAgentLocationSource;
+  ipAddress: string;
+  protocol: string;
+  deviceSpecs: string;
+  latitude?: number;
+  longitude?: number;
+  locationAccuracyM?: number;
   tabName: string;
   routePath: string;
   pageUrl: string;
@@ -326,6 +341,83 @@ function formatBrasiliaTimestamp(date: Date): string {
   }
 }
 
+function extractClientIp(headers: Record<string, string | string[] | undefined>): string {
+  const cfIp = readHeader(headers, 'cf-connecting-ip');
+  if (cfIp) return cfIp.slice(0, 64);
+
+  const realIp = readHeader(headers, 'x-real-ip');
+  if (realIp) return realIp.slice(0, 64);
+
+  const forwarded = readHeader(headers, 'x-forwarded-for');
+  if (forwarded) {
+    const first = forwarded.split(',')[0]?.trim();
+    if (first) return first.slice(0, 64);
+  }
+
+  return 'IP local/proxy';
+}
+
+function extractProtocol(
+  headers: Record<string, string | string[] | undefined>,
+  body: VisitAgentRequestBody
+): string {
+  const fromHeader = readHeader(headers, 'x-forwarded-proto').toUpperCase();
+  if (fromHeader === 'HTTPS' || fromHeader === 'HTTP') return fromHeader;
+  const fromBody = stripControlChars(body.protocol, 32).replace(/:$/, '').toUpperCase();
+  if (fromBody === 'HTTPS' || fromBody === 'HTTP') return fromBody;
+  return 'HTTPS';
+}
+
+function summarizeUserAgent(headers: Record<string, string | string[] | undefined>): string {
+  const ua = readHeader(headers, 'user-agent');
+  if (!ua) return 'Navegador padrão';
+  const os = /Android/i.test(ua)
+    ? 'Android'
+    : /iPhone|iPad|iOS/i.test(ua)
+      ? 'iOS'
+      : /Windows/i.test(ua)
+        ? 'Windows'
+        : /Mac OS X/i.test(ua)
+          ? 'macOS'
+          : /Linux/i.test(ua)
+            ? 'Linux'
+            : 'Outro SO';
+  const browser = /Edg\//i.test(ua)
+    ? 'Edge'
+    : /Chrome\//i.test(ua)
+      ? 'Chrome'
+      : /Safari\//i.test(ua) && !/Chrome\//i.test(ua)
+        ? 'Safari'
+        : /Firefox\//i.test(ua)
+          ? 'Firefox'
+          : 'Browser';
+  return `${os} · ${browser}`;
+}
+
+function sanitizeCoordinates(body: VisitAgentRequestBody): {
+  latitude?: number;
+  longitude?: number;
+  locationAccuracyM?: number;
+} {
+  const lat = typeof body.latitude === 'number' && Number.isFinite(body.latitude) ? body.latitude : null;
+  const lng = typeof body.longitude === 'number' && Number.isFinite(body.longitude) ? body.longitude : null;
+  if (lat === null || lng === null || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    return {};
+  }
+  const acc =
+    typeof body.locationAccuracyM === 'number' &&
+    Number.isFinite(body.locationAccuracyM) &&
+    body.locationAccuracyM >= 0 &&
+    body.locationAccuracyM <= 1000000
+      ? Math.round(body.locationAccuracyM)
+      : undefined;
+  return {
+    latitude: Number(lat.toFixed(5)),
+    longitude: Number(lng.toFixed(5)),
+    ...(acc !== undefined ? { locationAccuracyM: acc } : {}),
+  };
+}
+
 function buildWhatsAppAlertText(event: VisitAgentNormalizedEvent): string {
   const when = formatBrasiliaTimestamp(new Date(event.createdAtIso));
   const title =
@@ -335,15 +427,26 @@ function buildWhatsAppAlertText(event: VisitAgentNormalizedEvent): string {
         ? 'NOVO ACESSO NO APP CONAE'
         : 'NAVEGAÇÃO NO APP CONAE';
 
-  return [
+  const lines = [
     `📍 *${title}*`,
     `👤 Visitante: ${event.visitorLabel}`,
     `🗺️ Local: ${event.city} — ${event.state} (${event.country})`,
-    `📱 Dispositivo: ${event.deviceType}`,
+    `🌐 IP / Protocolo: ${event.ipAddress} · ${event.protocol}`,
+    `📱 Dispositivo: ${event.deviceType} (${event.deviceSpecs})`,
     `🧭 Tela/Aba: ${event.tabName}`,
     `🔗 Link: ${event.pageUrl}`,
     `🕒 Horário (Brasília): ${when}`,
-  ].join('\n');
+  ];
+
+  if (typeof event.latitude === 'number' && typeof event.longitude === 'number') {
+    lines.splice(
+      3,
+      0,
+      `📌 GPS Autorizado: ${event.latitude}, ${event.longitude} (https://maps.google.com/?q=${event.latitude},${event.longitude})`
+    );
+  }
+
+  return lines.join('\n');
 }
 
 function checkRateLimit(sessionId: string, dedupeKey: string, isTest: boolean): boolean {
@@ -519,13 +622,34 @@ export async function processVisitAgentEvent(
   const visitorLabel = stripControlChars(body.visitorLabel, 80) || (isTest ? 'Administrador CONAE' : 'Visitante');
 
   const geo = resolveApproximateLocation(headers, body);
+  const coords = sanitizeCoordinates(body);
+  const ipAddress = extractClientIp(headers);
+  const protocol = extractProtocol(headers, body);
+  const deviceSpecs =
+    stripControlChars(body.deviceSpecs, 160) || summarizeUserAgent(headers);
+
   const event: VisitAgentNormalizedEvent = {
     sessionId,
     visitorLabel,
     city: geo.city,
     state: geo.state,
     country: geo.country,
-    locationSource: geo.locationSource,
+    locationSource:
+      typeof coords.latitude === 'number' && typeof coords.longitude === 'number'
+        ? 'gps_consented'
+        : geo.locationSource,
+    ipAddress,
+    protocol,
+    deviceSpecs,
+    ...(typeof coords.latitude === 'number' && typeof coords.longitude === 'number'
+      ? {
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+          ...(coords.locationAccuracyM !== undefined
+            ? { locationAccuracyM: coords.locationAccuracyM }
+            : {}),
+        }
+      : {}),
     tabName,
     routePath,
     pageUrl,

@@ -16,6 +16,7 @@ import type {
 export const CONSENT_STORAGE_KEY = 'conae_visit_captcha_session_v2';
 export const CAPTCHA_CONSENT_EVENT = 'conae-visit-captcha-change';
 const SESSION_STORAGE_KEY = 'conae_visit_session_id_v1';
+const GEO_STORAGE_KEY = 'conae_visit_geo_coords_v1';
 
 const TAB_LABELS: Record<TabId, string> = {
   inicio: 'Início (Painel Principal)',
@@ -43,6 +44,12 @@ interface VisitConsentTrackerProps {
   profile: UserProfile | null;
 }
 
+interface StoredGeoCoords {
+  latitude: number;
+  longitude: number;
+  locationAccuracyM?: number;
+}
+
 interface AgentApiSuccess {
   ok: true;
   event: {
@@ -52,6 +59,12 @@ interface AgentApiSuccess {
     state: string;
     country: string;
     locationSource: AppVisitLocationSource;
+    ipAddress?: string;
+    protocol?: string;
+    deviceSpecs?: string;
+    latitude?: number;
+    longitude?: number;
+    locationAccuracyM?: number;
     tabName: string;
     routePath: string;
     pageUrl: string;
@@ -87,6 +100,117 @@ function detectDeviceType(): AppVisitDeviceType {
     return 'Celular';
   }
   return 'Computador';
+}
+
+function collectDeviceSpecs(): string {
+  if (typeof navigator === 'undefined' || typeof window === 'undefined') return 'Navegador';
+  const ua = navigator.userAgent || '';
+  const androidMatch = ua.match(/Android\s([\d.]+)/i);
+  const iosMatch = ua.match(/OS\s([\d_]+)\slike\sMac/i);
+  const os = androidMatch
+    ? `Android ${androidMatch[1]}`
+    : iosMatch
+      ? `iOS ${iosMatch[1].replace(/_/g, '.')}`
+      : /Windows NT/i.test(ua)
+        ? 'Windows'
+        : /Mac OS X/i.test(ua)
+          ? 'macOS'
+          : /Linux/i.test(ua)
+            ? 'Linux'
+            : 'Sistema';
+
+  const browser = /Edg\//i.test(ua)
+    ? 'Edge'
+    : /OPR\//i.test(ua)
+      ? 'Opera'
+      : /Chrome\//i.test(ua)
+        ? 'Chrome'
+        : /Safari\//i.test(ua)
+          ? 'Safari'
+          : /Firefox\//i.test(ua)
+            ? 'Firefox'
+            : 'Browser';
+
+  const screenSize =
+    typeof window.screen !== 'undefined'
+      ? `${window.screen.width}x${window.screen.height}`
+      : '';
+  const lang = navigator.language || 'pt-BR';
+  const parts = [os, browser, screenSize, lang].filter(Boolean);
+  return parts.join(' · ').slice(0, 160);
+}
+
+function readStoredGeoCoords(): StoredGeoCoords | null {
+  try {
+    const raw = window.sessionStorage.getItem(GEO_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<StoredGeoCoords>;
+    if (
+      typeof parsed.latitude === 'number' &&
+      typeof parsed.longitude === 'number' &&
+      Number.isFinite(parsed.latitude) &&
+      Number.isFinite(parsed.longitude)
+    ) {
+      return {
+        latitude: parsed.latitude,
+        longitude: parsed.longitude,
+        locationAccuracyM:
+          typeof parsed.locationAccuracyM === 'number' ? parsed.locationAccuracyM : undefined,
+      };
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return null;
+}
+
+function requestBrowserGeolocation(): Promise<StoredGeoCoords | null> {
+  return new Promise((resolve) => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      resolve(null);
+      return;
+    }
+
+    let settled = false;
+    const finish = (val: StoredGeoCoords | null) => {
+      if (settled) return;
+      settled = true;
+      resolve(val);
+    };
+
+    const guardTimer = window.setTimeout(() => finish(null), 4500);
+
+    try {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          window.clearTimeout(guardTimer);
+          const coords: StoredGeoCoords = {
+            latitude: Number(pos.coords.latitude.toFixed(5)),
+            longitude: Number(pos.coords.longitude.toFixed(5)),
+            locationAccuracyM: Math.round(pos.coords.accuracy || 0),
+          };
+          try {
+            window.sessionStorage.setItem(GEO_STORAGE_KEY, JSON.stringify(coords));
+          } catch {
+            // ignore
+          }
+          finish(coords);
+        },
+        () => {
+          window.clearTimeout(guardTimer);
+          finish(null);
+        },
+        {
+          enableHighAccuracy: false,
+          timeout: 4000,
+          maximumAge: 60000,
+        }
+      );
+    } catch {
+      window.clearTimeout(guardTimer);
+      finish(null);
+    }
+  });
 }
 
 function readConsentState(): 'pending' | 'accepted' | 'declined' {
@@ -139,21 +263,22 @@ export const VisitCaptchaCard: React.FC<VisitCaptchaCardProps> = ({ variant = 'i
     return () => window.removeEventListener(CAPTCHA_CONSENT_EVENT, onConsentChange);
   }, []);
 
-  const handleCaptchaClick = () => {
+  const handleCaptchaClick = async () => {
     if (captchaStage !== 'idle') return;
     setCaptchaStage('verifying');
 
-    window.setTimeout(() => {
-      setCaptchaStage('verified');
-      setConsent('accepted');
-      persistConsentState('accepted');
+    // Request browser geolocation transparently upon CAPTCHA Terms acceptance (falls back gracefully if denied)
+    await requestBrowserGeolocation();
 
-      if (variant === 'floating') {
-        window.setTimeout(() => {
-          setDismissed(true);
-        }, 900);
-      }
-    }, 400);
+    setCaptchaStage('verified');
+    setConsent('accepted');
+    persistConsentState('accepted');
+
+    if (variant === 'floating') {
+      window.setTimeout(() => {
+        setDismissed(true);
+      }, 900);
+    }
   };
 
   const handleDecline = () => {
@@ -172,22 +297,22 @@ export const VisitCaptchaCard: React.FC<VisitCaptchaCardProps> = ({ variant = 'i
 
   const containerClass =
     variant === 'inline'
-      ? 'w-full max-w-xl rounded-xl border-2 border-amber-400/80 bg-white text-neutral-900 shadow-[0_14px_40px_rgba(0,0,0,0.6)] overflow-hidden shrink-0'
-      : 'fixed top-3 left-1/2 -translate-x-1/2 z-[80] w-[calc(100vw-1.5rem)] max-w-[340px] rounded-xl border-2 border-amber-400/85 bg-white text-neutral-900 shadow-[0_18px_50px_rgba(0,0,0,0.65)] overflow-hidden';
+      ? 'w-full max-w-xl rounded-lg border border-amber-400/75 bg-white text-neutral-900 shadow-lg overflow-hidden shrink-0'
+      : 'fixed top-2.5 left-1/2 -translate-x-1/2 z-[80] w-[calc(100vw-1.5rem)] max-w-[320px] rounded-lg border border-amber-400/80 bg-white text-neutral-900 shadow-xl overflow-hidden';
 
   return (
     <div role="region" aria-label="Verificação CAPTCHA e Termos CONAE" className={containerClass}>
-      <div className="px-3.5 py-2.5 flex items-center justify-between gap-3">
+      <div className="px-3 py-1.5 flex items-center justify-between gap-2.5">
         <button
           type="button"
-          onClick={handleCaptchaClick}
+          onClick={() => void handleCaptchaClick()}
           disabled={captchaStage !== 'idle'}
           aria-checked={captchaStage === 'verified'}
           role="checkbox"
-          className="flex items-center gap-3 text-left group cursor-pointer disabled:cursor-default min-w-0 flex-1"
+          className="flex items-center gap-2.5 text-left group cursor-pointer disabled:cursor-default min-w-0 flex-1"
         >
           <span
-            className={`w-7 h-7 rounded border-2 flex items-center justify-center shrink-0 transition-all ${
+            className={`w-5 h-5 rounded border flex items-center justify-center shrink-0 transition-all ${
               captchaStage === 'verified'
                 ? 'bg-emerald-600 border-emerald-600 text-white'
                 : captchaStage === 'verifying'
@@ -195,65 +320,62 @@ export const VisitCaptchaCard: React.FC<VisitCaptchaCardProps> = ({ variant = 'i
                   : 'bg-white border-neutral-400 group-hover:border-emerald-600'
             }`}
           >
-            {captchaStage === 'verifying' && <Loader2 className="w-4 h-4 animate-spin" />}
-            {captchaStage === 'verified' && <Check className="w-4 h-4 stroke-[3]" />}
+            {captchaStage === 'verifying' && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {captchaStage === 'verified' && <Check className="w-3.5 h-3.5 stroke-[3]" />}
           </span>
 
-          <span className="min-w-0 leading-tight">
-            <span className="block text-[13px] font-bold text-neutral-900">
+          <span className="min-w-0 flex items-center gap-2 leading-none">
+            <span className="text-xs font-bold text-neutral-900 whitespace-nowrap">
               {captchaStage === 'verified'
                 ? 'Verificado!'
                 : captchaStage === 'verifying'
                   ? 'Verificando...'
                   : 'Não sou um robô'}
             </span>
-            <span className="block text-[10px] text-neutral-600 mt-0.5 truncate">
-              {captchaStage === 'verified'
-                ? 'Acesso verificado conforme Termos CONAE'
-                : 'Clique para confirmar e aceitar os Termos'}
-            </span>
           </span>
         </button>
 
-        <div className="flex flex-col items-center shrink-0 pl-2.5 border-l border-neutral-200">
-          <div className="flex items-center gap-1">
-            <ShieldCheck className="w-4 h-4 text-emerald-700" />
-            {captchaStage !== 'verified' && (
-              <button
-                type="button"
-                onClick={handleDecline}
-                aria-label="Fechar sem aceitar"
-                title="Fechar sem aceitar"
-                className="text-neutral-400 hover:text-neutral-700 cursor-pointer"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
+        <div className="flex items-center gap-2 shrink-0 pl-2 border-l border-neutral-200">
+          <div className="flex flex-col items-end leading-tight">
+            <span className="inline-flex items-center gap-1 text-[8.5px] font-extrabold tracking-wide text-neutral-700 uppercase">
+              <ShieldCheck className="w-3 h-3 text-emerald-700" />
+              CAPTCHA
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowTerms((v) => !v)}
+              className="text-[8.5px] text-emerald-700 hover:text-emerald-900 font-semibold underline cursor-pointer"
+            >
+              Termos · Privacidade
+            </button>
           </div>
-          <span className="text-[8.5px] font-extrabold tracking-wide text-neutral-700 mt-0.5 uppercase">
-            CAPTCHA
-          </span>
-          <button
-            type="button"
-            onClick={() => setShowTerms((v) => !v)}
-            className="text-[9px] text-emerald-700 hover:text-emerald-900 font-semibold underline mt-0.5 cursor-pointer"
-          >
-            Termos · Privacidade
-          </button>
+          {captchaStage !== 'verified' && (
+            <button
+              type="button"
+              onClick={handleDecline}
+              aria-label="Fechar sem aceitar"
+              title="Fechar sem aceitar"
+              className="text-neutral-400 hover:text-neutral-700 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
       {showTerms && (
         <div className="px-3.5 pb-3 pt-2 border-t border-neutral-200 bg-neutral-50 text-[10.5px] text-neutral-700 leading-relaxed space-y-2">
           <p>
-            <strong className="text-neutral-900">Termos de Acesso (LGPD):</strong> ao marcar{' '}
-            <em>&ldquo;Não sou um robô&rdquo;</em>, você concorda com os termos da plataforma CONAE
-            e autoriza o registro de segurança da sua{' '}
-            <strong className="text-neutral-900">cidade/estado aproximado</strong>,{' '}
-            <strong className="text-neutral-900">dispositivo</strong>,{' '}
-            <strong className="text-neutral-900">telas</strong> e{' '}
-            <strong className="text-neutral-900">links acessados</strong> para proteção e
-            atendimento.
+            <strong className="text-neutral-900">Termos de Acesso &amp; Localização (LGPD):</strong>{' '}
+            ao marcar <em>&ldquo;Não sou um robô&rdquo;</em>, você concorda com os termos da CONAE
+            e autoriza a ativação da <strong className="text-neutral-900">localização do dispositivo</strong>{' '}
+            (mediante confirmação do navegador), bem como o registro de segurança do{' '}
+            <strong className="text-neutral-900">endereço IP</strong>,{' '}
+            <strong className="text-neutral-900">protocolo de rede (HTTPS)</strong>,{' '}
+            <strong className="text-neutral-900">configuração do aparelho</strong> (sistema,
+            navegador e tela), <strong className="text-neutral-900">cidade/estado</strong> e{' '}
+            <strong className="text-neutral-900">links/telas acessados</strong> para proteção da
+            plataforma.
           </p>
           <div className="flex items-center justify-between gap-2">
             <button
@@ -356,6 +478,10 @@ export const VisitConsentTracker: React.FC<VisitConsentTrackerProps> = ({
       }
     })();
 
+    const geoCoords = readStoredGeoCoords();
+    const deviceSpecs = collectDeviceSpecs();
+    const protocol = window.location.protocol.replace(/:$/, '').toUpperCase() || 'HTTPS';
+
     let cancelled = false;
 
     const reportVisit = async () => {
@@ -372,9 +498,18 @@ export const VisitConsentTracker: React.FC<VisitConsentTrackerProps> = ({
             routePath: resolvedRoutePath,
             pageUrl: window.location.href,
             deviceType: detectDeviceType(),
+            deviceSpecs,
+            protocol,
             visitorLabel: visitorLabel.slice(0, 80),
             timezone,
             consentedState: profile?.state || undefined,
+            ...(geoCoords
+              ? {
+                  latitude: geoCoords.latitude,
+                  longitude: geoCoords.longitude,
+                  locationAccuracyM: geoCoords.locationAccuracyM,
+                }
+              : {}),
           }),
         });
 
@@ -383,7 +518,7 @@ export const VisitConsentTracker: React.FC<VisitConsentTrackerProps> = ({
         if (!data?.ok || !data.event || cancelled) return;
 
         const visitId = sanitizeDocId('visit');
-        await setDoc(doc(db, 'app_visit_logs', visitId), {
+        const payload: Record<string, unknown> = {
           id: visitId,
           sessionId: data.event.sessionId,
           visitorLabel: data.event.visitorLabel,
@@ -400,7 +535,18 @@ export const VisitConsentTracker: React.FC<VisitConsentTrackerProps> = ({
           whatsappProvider: data.whatsappProvider,
           consentAccepted: true,
           createdAt: serverTimestamp(),
-        });
+        };
+
+        if (data.event.ipAddress) payload.ipAddress = data.event.ipAddress;
+        if (data.event.protocol) payload.protocol = data.event.protocol;
+        if (data.event.deviceSpecs) payload.deviceSpecs = data.event.deviceSpecs;
+        if (typeof data.event.latitude === 'number') payload.latitude = data.event.latitude;
+        if (typeof data.event.longitude === 'number') payload.longitude = data.event.longitude;
+        if (typeof data.event.locationAccuracyM === 'number') {
+          payload.locationAccuracyM = data.event.locationAccuracyM;
+        }
+
+        await setDoc(doc(db, 'app_visit_logs', visitId), payload);
       } catch {
         // Non-blocking analytics
       }
@@ -408,7 +554,7 @@ export const VisitConsentTracker: React.FC<VisitConsentTrackerProps> = ({
 
     const timer = window.setTimeout(() => {
       void reportVisit();
-    }, 300);
+    }, 250);
 
     return () => {
       cancelled = true;
@@ -426,7 +572,6 @@ export const VisitConsentTracker: React.FC<VisitConsentTrackerProps> = ({
     profile,
   ]);
 
-  // On Lock Screen, the CAPTCHA is rendered inline between the Robot card and Photo card.
   if (lockScreenActive || consent !== 'pending') {
     return null;
   }

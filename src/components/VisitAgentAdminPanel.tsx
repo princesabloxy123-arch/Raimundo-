@@ -29,6 +29,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db, sanitizeDocId } from '../firebase';
 import { VisitAgentTerminalModal } from './VisitAgentTerminalModal';
+import { WorldStates3DCanvas } from './WorldStates3DCanvas';
 import type {
   AppVisitLog,
   AppVisitWhatsAppProvider,
@@ -284,7 +285,7 @@ export const VisitAgentAdminPanel: React.FC<VisitAgentAdminPanelProps> = ({
       }
 
       const visitId = sanitizeDocId('visit');
-      await setDoc(doc(db, 'app_visit_logs', visitId), {
+      const payload: Record<string, unknown> = {
         id: visitId,
         sessionId: data.event.sessionId,
         visitorLabel: data.event.visitorLabel,
@@ -301,7 +302,16 @@ export const VisitAgentAdminPanel: React.FC<VisitAgentAdminPanelProps> = ({
         whatsappProvider: data.whatsappProvider,
         consentAccepted: true,
         createdAt: serverTimestamp(),
-      });
+      };
+      if (data.event.ipAddress) payload.ipAddress = data.event.ipAddress;
+      if (data.event.protocol) payload.protocol = data.event.protocol;
+      if (data.event.deviceSpecs) payload.deviceSpecs = data.event.deviceSpecs;
+      if (typeof data.event.latitude === 'number') payload.latitude = data.event.latitude;
+      if (typeof data.event.longitude === 'number') payload.longitude = data.event.longitude;
+      if (typeof data.event.locationAccuracyM === 'number') {
+        payload.locationAccuracyM = data.event.locationAccuracyM;
+      }
+      await setDoc(doc(db, 'app_visit_logs', visitId), payload);
 
       if (data.whatsappStatus === 'enviado') {
         setTestResult(
@@ -336,7 +346,22 @@ export const VisitAgentAdminPanel: React.FC<VisitAgentAdminPanelProps> = ({
   };
 
   return (
-    <div className="space-y-5">
+    <div className="relative space-y-5 rounded-2xl overflow-hidden">
+      {/* 3D Interactive World Globe Divided by Brazilian States Behind the Panel */}
+      <div className="relative rounded-2xl border border-emerald-400/35 bg-[#020b08] overflow-hidden shadow-2xl">
+        <div className="h-[260px] sm:h-[310px] w-full relative">
+          <WorldStates3DCanvas logs={logs} interactive focusBrazil />
+          <div className="pointer-events-none absolute top-3 left-3 flex flex-wrap items-center gap-2">
+            <span className="px-2.5 py-1 rounded-lg bg-black/70 border border-emerald-400/40 text-[11px] font-bold text-emerald-200 backdrop-blur-sm">
+              Globo 3D Mundial · 27 Estados do Brasil
+            </span>
+            <span className="px-2.5 py-1 rounded-lg bg-black/70 border border-amber-400/40 text-[11px] font-mono text-amber-300 backdrop-blur-sm">
+              {stats.uniqueStates} UF(s) ativas · Arraste para girar
+            </span>
+          </div>
+        </div>
+      </div>
+
       {/* Header & Server Agent Status */}
       <div className="conae-panel rounded-2xl p-5 border border-amber-400/35 space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -533,8 +558,8 @@ export const VisitAgentAdminPanel: React.FC<VisitAgentAdminPanelProps> = ({
               <thead>
                 <tr className="border-b border-amber-400/20 text-[11px] text-amber-300 uppercase">
                   <th className="py-2 pr-3">Horário</th>
-                  <th className="py-2 pr-3">Cidade / Estado</th>
-                  <th className="py-2 pr-3">Visitante &amp; Dispositivo</th>
+                  <th className="py-2 pr-3">Cidade / Estado / GPS</th>
+                  <th className="py-2 pr-3">IP · Protocolo · Aparelho</th>
                   <th className="py-2 pr-3">Tela / Link Acessado</th>
                   <th className="py-2 pr-3">WhatsApp</th>
                   {isPresidentMode && <th className="py-2 text-right">Ação</th>}
@@ -556,13 +581,31 @@ export const VisitAgentAdminPanel: React.FC<VisitAgentAdminPanelProps> = ({
                         <p className="text-[11px] text-amber-200/90">
                           {log.state} · {log.country}
                         </p>
+                        {typeof log.latitude === 'number' && typeof log.longitude === 'number' && (
+                          <a
+                            href={`https://maps.google.com/?q=${log.latitude},${log.longitude}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[10px] text-rose-300 hover:underline font-mono mt-0.5"
+                          >
+                            <MapPin className="w-3 h-3" />
+                            {log.latitude}, {log.longitude}
+                          </a>
+                        )}
                       </td>
-                      <td className="py-2.5 pr-3">
-                        <p className="font-medium text-emerald-50">{log.visitorLabel}</p>
-                        <p className="text-[11px] text-emerald-200/70 inline-flex items-center gap-1">
-                          <Smartphone className="w-3 h-3" />
-                          {log.deviceType}
+                      <td className="py-2.5 pr-3 max-w-[230px]">
+                        <p className="font-mono text-[11px] text-amber-200">
+                          {log.ipAddress || 'IP proxy'} · {log.protocol || 'HTTPS'}
                         </p>
+                        <p className="font-medium text-emerald-50 text-[11px] inline-flex items-center gap-1">
+                          <Smartphone className="w-3 h-3" />
+                          {log.deviceType} — {log.visitorLabel}
+                        </p>
+                        {log.deviceSpecs && (
+                          <p className="text-[10px] text-emerald-200/75 truncate" title={log.deviceSpecs}>
+                            {log.deviceSpecs}
+                          </p>
+                        )}
                       </td>
                       <td className="py-2.5 pr-3 max-w-xs">
                         <p className="font-semibold text-amber-200 truncate" title={log.tabName}>

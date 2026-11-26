@@ -5,6 +5,7 @@ import {
   EyeOff,
   KeyRound,
   Lock,
+  MapPin,
   MessageCircle,
   Terminal,
   Trash2,
@@ -22,6 +23,7 @@ import {
 } from 'firebase/firestore';
 import type { User } from 'firebase/auth';
 import { db, isVisitTerminalPassword } from '../firebase';
+import { WorldStates3DCanvas } from './WorldStates3DCanvas';
 import type { AppVisitLog } from '../types';
 
 interface VisitAgentTerminalModalProps {
@@ -122,12 +124,17 @@ export const VisitAgentTerminalModal: React.FC<VisitAgentTerminalModalProps> = (
 
   const whatsAppReportHref = useMemo(() => {
     const top = logs.slice(0, 10);
-    const lines = top.map((item, i) =>
-      [
+    const lines = top.map((item, i) => {
+      const gpsLine =
+        typeof item.latitude === 'number' && typeof item.longitude === 'number'
+          ? `\nGPS: ${item.latitude}, ${item.longitude}`
+          : '';
+      return [
         `${i + 1}. [${formatTermTime(item.createdAt)}] ${item.city} — ${item.state} (${item.deviceType})`,
+        `IP: ${item.ipAddress || '-'} | ${item.protocol || 'HTTPS'} | ${item.deviceSpecs || '-'}${gpsLine}`,
         `${item.tabName} | ${item.pageUrl}`,
-      ].join('\n')
-    );
+      ].join('\n');
+    });
     return `https://wa.me/${ADMIN_WHATSAPP_DIGITS}?text=${encodeURIComponent(lines.join('\n\n'))}`;
   }, [logs]);
 
@@ -189,9 +196,9 @@ export const VisitAgentTerminalModal: React.FC<VisitAgentTerminalModalProps> = (
       aria-label="254"
       className="fixed inset-0 z-[90] flex items-center justify-center bg-black/85 backdrop-blur-sm p-3 sm:p-5"
     >
-      <div className="w-full max-w-4xl h-[80vh] max-h-[85vh] flex flex-col rounded-2xl border border-emerald-400/45 bg-[#020a07] shadow-[0_24px_80px_rgba(0,0,0,0.9)] overflow-hidden font-mono text-emerald-100">
+      <div className="w-full max-w-4xl h-[82vh] max-h-[86vh] flex flex-col rounded-2xl border border-emerald-400/45 bg-[#020a07] shadow-[0_24px_80px_rgba(0,0,0,0.9)] overflow-hidden font-mono text-emerald-100">
         {/* Minimal Title Bar */}
-        <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-[#051811] border-b border-emerald-500/30">
+        <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-[#051811] border-b border-emerald-500/30 relative z-20">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-rose-400/80" />
             <span className="w-2.5 h-2.5 rounded-full bg-amber-400/80" />
@@ -223,14 +230,18 @@ export const VisitAgentTerminalModal: React.FC<VisitAgentTerminalModalProps> = (
           </div>
         </div>
 
-        {/* Body */}
+        {/* Body with 3D Rotating World & Brazilian States Globe Behind */}
         {!authorized ? (
-          <div className="flex-1 p-6 flex flex-col items-center justify-center space-y-4">
-            <div className="w-11 h-11 rounded-2xl bg-emerald-950/90 border border-emerald-400/40 flex items-center justify-center text-emerald-300">
+          <div className="relative flex-1 p-6 flex flex-col items-center justify-center space-y-4 overflow-hidden">
+            <div className="absolute inset-0 opacity-45 pointer-events-none">
+              <WorldStates3DCanvas logs={[]} interactive={false} />
+            </div>
+
+            <div className="relative z-10 w-11 h-11 rounded-2xl bg-emerald-950/90 border border-emerald-400/40 flex items-center justify-center text-emerald-300">
               <Lock className="w-5 h-5" />
             </div>
 
-            <form onSubmit={handlePinSubmit} className="w-full max-w-[240px] space-y-3">
+            <form onSubmit={handlePinSubmit} className="relative z-10 w-full max-w-[240px] space-y-3">
               <div className="relative">
                 <KeyRound className="w-4 h-4 text-emerald-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
@@ -241,7 +252,7 @@ export const VisitAgentTerminalModal: React.FC<VisitAgentTerminalModalProps> = (
                   onChange={(e) => setPin(e.target.value)}
                   disabled={cooldownLeft > 0 || checking}
                   placeholder="••••••"
-                  className="w-full rounded-xl bg-black/70 border border-emerald-500/40 pl-9 pr-10 py-2.5 text-sm text-center tracking-widest text-emerald-100 placeholder:text-emerald-400/40 focus:outline-none focus:border-emerald-400"
+                  className="w-full rounded-xl bg-black/80 border border-emerald-500/45 pl-9 pr-10 py-2.5 text-sm text-center tracking-widest text-emerald-100 placeholder:text-emerald-400/40 focus:outline-none focus:border-emerald-400"
                 />
                 <button
                   type="button"
@@ -270,56 +281,87 @@ export const VisitAgentTerminalModal: React.FC<VisitAgentTerminalModalProps> = (
             </form>
           </div>
         ) : (
-          <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-[#020705] text-xs">
-            {!isAdmin ? (
-              <div className="h-full flex items-center justify-center">
-                {onGoogleLogin && (
-                  <button
-                    type="button"
-                    onClick={() => void handleAdminSignIn()}
-                    disabled={signingIn}
-                    className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs cursor-pointer disabled:opacity-60"
-                  >
-                    {signingIn ? '...' : 'Google'}
-                  </button>
-                )}
-              </div>
-            ) : (
-              logs.map((log) => (
-                <div
-                  key={log.id}
-                  className="rounded-lg border border-emerald-500/20 bg-black/55 p-3 space-y-1"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 flex-wrap text-[11px]">
-                      <span className="text-amber-300 font-bold">
-                        [{formatTermTime(log.createdAt)}]
-                      </span>
-                      <span className="text-white font-bold">
-                        {log.city} — {log.state} ({log.country})
-                      </span>
-                      <span className="text-sky-300">{log.deviceType}</span>
-                    </div>
+          <div className="relative flex-1 overflow-hidden bg-[#020705]">
+            {/* 3D World Globe Divided by Brazilian States Behind the Terminal */}
+            <div className="absolute inset-0 opacity-65">
+              <WorldStates3DCanvas logs={logs} interactive={logs.length === 0} />
+            </div>
 
+            <div className="relative z-10 h-full overflow-y-auto p-4 space-y-2 text-xs">
+              {!isAdmin ? (
+                <div className="h-full flex items-center justify-center">
+                  {onGoogleLogin && (
                     <button
                       type="button"
-                      onClick={() => void handleDeleteEntry(log.id)}
-                      aria-label="Apagar"
-                      className="text-rose-300/70 hover:text-rose-200 p-1 cursor-pointer"
+                      onClick={() => void handleAdminSignIn()}
+                      disabled={signingIn}
+                      className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs cursor-pointer disabled:opacity-60 shadow-lg"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      {signingIn ? '...' : 'Google'}
                     </button>
-                  </div>
-
-                  <div className="text-[11px] text-emerald-200/90 space-y-0.5 break-all">
-                    <p>
-                      {log.visitorLabel} · {log.tabName}
-                    </p>
-                    <p className="text-emerald-400/85">{log.pageUrl}</p>
-                  </div>
+                  )}
                 </div>
-              ))
-            )}
+              ) : (
+                logs.map((log) => (
+                  <div
+                    key={log.id}
+                    className="rounded-lg border border-emerald-500/30 bg-[#020a07]/82 backdrop-blur-sm p-3 space-y-1"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 flex-wrap text-[11px]">
+                        <span className="text-amber-300 font-bold">
+                          [{formatTermTime(log.createdAt)}]
+                        </span>
+                        <span className="text-white font-bold">
+                          {log.city} — {log.state} ({log.country})
+                        </span>
+                        <span className="text-sky-300">{log.deviceType}</span>
+                        {log.protocol && (
+                          <span className="text-emerald-300">{log.protocol}</span>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteEntry(log.id)}
+                        aria-label="Apagar"
+                        className="text-rose-300/70 hover:text-rose-200 p-1 cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="text-[11px] text-emerald-200/90 space-y-0.5 break-all">
+                      {(log.ipAddress || log.deviceSpecs) && (
+                        <p className="text-amber-200/90">
+                          {log.ipAddress ? `IP: ${log.ipAddress}` : ''}
+                          {log.ipAddress && log.deviceSpecs ? ' · ' : ''}
+                          {log.deviceSpecs || ''}
+                        </p>
+                      )}
+                      {typeof log.latitude === 'number' && typeof log.longitude === 'number' && (
+                        <p>
+                          <a
+                            href={`https://maps.google.com/?q=${log.latitude},${log.longitude}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-rose-300 hover:underline"
+                          >
+                            <MapPin className="w-3 h-3" />
+                            {log.latitude}, {log.longitude}
+                            {log.locationAccuracyM ? ` (±${log.locationAccuracyM}m)` : ''}
+                          </a>
+                        </p>
+                      )}
+                      <p>
+                        {log.visitorLabel} · {log.tabName}
+                      </p>
+                      <p className="text-emerald-400/85">{log.pageUrl}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         )}
       </div>

@@ -730,7 +730,11 @@ export interface DukeChatMessage {
   quickOptions?: DukeQuickOption[];
 }
 
-export type AppVisitLocationSource = 'server_geo' | 'user_consented' | 'timezone_approx';
+export type AppVisitLocationSource =
+  | 'gps_consented'
+  | 'server_geo'
+  | 'user_consented'
+  | 'timezone_approx';
 export type AppVisitDeviceType = 'Celular' | 'Tablet' | 'Computador' | 'Desconhecido';
 export type AppVisitEventType = 'app_open' | 'tab_view' | 'route_view' | 'test_alert';
 export type AppVisitWhatsAppStatus = 'enviado' | 'aguardando_chave' | 'erro' | 'cooldown';
@@ -744,6 +748,12 @@ export interface AppVisitLog {
   state: string;
   country: string;
   locationSource: AppVisitLocationSource;
+  ipAddress?: string;
+  protocol?: string;
+  deviceSpecs?: string;
+  latitude?: number;
+  longitude?: number;
+  locationAccuracyM?: number;
   tabName: string;
   routePath: string;
   pageUrl: string;

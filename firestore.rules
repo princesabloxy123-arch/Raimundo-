@@ -671,7 +671,9 @@ service cloud.firestore {
       ]) &&
       data.keys().hasOnly([
         'id', 'sessionId', 'visitorLabel', 'city', 'state', 'country',
-        'locationSource', 'tabName', 'routePath', 'pageUrl', 'deviceType',
+        'locationSource', 'ipAddress', 'protocol', 'deviceSpecs',
+        'latitude', 'longitude', 'locationAccuracyM',
+        'tabName', 'routePath', 'pageUrl', 'deviceType',
         'eventType', 'whatsappStatus', 'whatsappProvider', 'consentAccepted', 'createdAt'
       ]) &&
       isValidId(data.id) &&
@@ -681,7 +683,13 @@ service cloud.firestore {
       isValidStr(data.city, 1, 80) &&
       isValidStr(data.state, 1, 80) &&
       isValidStr(data.country, 2, 40) &&
-      data.locationSource in ['server_geo', 'user_consented', 'timezone_approx'] &&
+      data.locationSource in ['gps_consented', 'server_geo', 'user_consented', 'timezone_approx'] &&
+      (!('ipAddress' in data) || isValidStr(data.ipAddress, 1, 64)) &&
+      (!('protocol' in data) || isValidStr(data.protocol, 1, 32)) &&
+      (!('deviceSpecs' in data) || isValidStr(data.deviceSpecs, 1, 160)) &&
+      (!('latitude' in data) || (data.latitude is number && data.latitude >= -90 && data.latitude <= 90)) &&
+      (!('longitude' in data) || (data.longitude is number && data.longitude >= -180 && data.longitude <= 180)) &&
+      (!('locationAccuracyM' in data) || (data.locationAccuracyM is number && data.locationAccuracyM >= 0 && data.locationAccuracyM <= 1000000)) &&
       isValidStr(data.tabName, 1, 80) &&
       isValidStr(data.routePath, 1, 200) &&
       isValidStr(data.pageUrl, 1, 350) &&
