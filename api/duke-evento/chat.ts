@@ -1,6 +1,6 @@
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 
-export type DukeStudioMode = 'auto' | 'chat' | 'image' | 'event';
+export type DukeStudioMode = 'auto' | 'chat' | 'image' | 'video' | 'gps' | 'event';
 
 export type DukeEventTheme =
   | 'emerald_gold'
@@ -184,13 +184,67 @@ export interface DukeChatRequestBody {
   attachment?: DukeChatAttachment | null;
 }
 
+export type DukeVideoAspectRatio = '9:16' | '16:9' | '1:1';
+export type DukeVideoVisualStyle =
+  | 'cinematic_gold'
+  | 'neon_cyber'
+  | 'aurora_glass'
+  | 'royal_emerald'
+  | 'sunset_promo'
+  | 'editorial_noir';
+export type DukeVideoMusicMood =
+  | 'epic_inspirational'
+  | 'modern_tech'
+  | 'corporate_upbeat'
+  | 'worship_warm'
+  | 'luxury_gala';
+
+export interface DukeVideoScene {
+  sceneNumber: number;
+  durationSec: number;
+  badge: string;
+  headline: string;
+  subheadline: string;
+  ctaText?: string;
+  cameraMotion: 'zoom_in' | 'zoom_out' | 'pan_left' | 'pan_right';
+  visualMotif: 'particles' | 'beams' | 'waves' | 'rings' | 'grid' | 'bokeh';
+  bgStart: string;
+  bgMid: string;
+  bgEnd: string;
+  accentColor: string;
+}
+
+export interface DukeVideoSpec {
+  title: string;
+  summary: string;
+  aspectRatio: DukeVideoAspectRatio;
+  visualStyle: DukeVideoVisualStyle;
+  musicMood: DukeVideoMusicMood;
+  voiceoverScript: string;
+  footerBrand?: string;
+  scenes: DukeVideoScene[];
+}
+
+export type DukeGpsTravelMode = 'DRIVING' | 'WALKING' | 'BICYCLING' | 'TRANSIT';
+
+export interface DukeGpsRequest {
+  action: 'search' | 'route' | 'my_location';
+  query: string;
+  originQuery?: string;
+  destinationQuery?: string;
+  travelMode?: DukeGpsTravelMode;
+  label?: string;
+}
+
 export interface DukeChatResult {
-  modeUsed: 'chat' | 'image' | 'event';
+  modeUsed: 'chat' | 'image' | 'video' | 'gps' | 'event';
   reply: string;
   shouldPublish: boolean;
   event?: DukeEventSpec;
   imageDesign?: DukeImageDesignSpec;
   imageVariants?: DukeImageDesignSpec[];
+  videoSpec?: DukeVideoSpec;
+  gpsRequest?: DukeGpsRequest;
   sources?: DukeWebSource[];
   quickOptions?: DukeQuickOption[];
 }
@@ -628,8 +682,14 @@ function detectStudioMode(
   message: string,
   hasImageAttachment: boolean,
   hasCurrentEvent: boolean
-): 'chat' | 'image' | 'event' {
-  if (requestedMode === 'chat' || requestedMode === 'image' || requestedMode === 'event') {
+): 'chat' | 'image' | 'video' | 'gps' | 'event' {
+  if (
+    requestedMode === 'chat' ||
+    requestedMode === 'image' ||
+    requestedMode === 'video' ||
+    requestedMode === 'gps' ||
+    requestedMode === 'event'
+  ) {
     return requestedMode;
   }
 
@@ -638,15 +698,33 @@ function detectStudioMode(
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
 
+  // Explicit GPS / Google Maps / Location / Route intents
+  const gpsRegex =
+    /\b(gps|google maps|mapa|localizacao|localizar|onde fica|como chegar|rota|rotas|caminho para|trajeto|endereco de|buscar endereco|mostrar no mapa|mostre no mapa|mostra no mapa|abrir mapa|perto de mim|proximo de mim|minha localizacao|coordenadas|navegar ate|navegacao)\b/;
+
+  // Explicit AI Video generation intents
+  const videoRegex =
+    /\b(video|videos|gerar video|criar video|fazer video|faca um video|faz um video|fassa video|fassa videos|reels|tiktok|shorts|vinheta|teaser|trailer|clipe|animacao|video animado|comercial em video|propaganda em video|video institucional|video convite|convite animado)\b/;
+
   // Explicit image creation / write-on-photo / photo reformulation intents
   const imageRegex =
     /\b(imagem|imagens|foto|banner|cartaz|flyer|poster|arte|logotipo|logo|capa|stories|story|post para|card visual|reformula|reformular|reformule|edita|editar|edite|modifica|modificar|modifique|escreve na foto|escrever na foto|escreva na foto|texto na foto|frase na foto|coloca texto|colocar texto|melhora|melhorar|transforma|transformar|retoca|retocar|filtro|moldura|miniatura|thumbnail)\b/;
   // Explicit event builder / link publishing intents
   const eventRegex =
     /\b(evento|eventos|congresso|convencao|culto|conferencia|workshop|seminario|palestra|programacao|paineis|painel|preletores|palestrantes|ingressos|credenciamento|gera o link|gerar link|publica|publicar|link do evento|pagina do evento|pagina de divulgacao)\b/;
-  // Explicit free ChatGPT / text / code intents
+  // Explicit free text / code intents
   const codeOrTextRegex =
     /\b(codigo|html|css|javascript|typescript|react|python|sql|script|texto|redacao|artigo|sermao|pregacao|roteiro|legenda|copy|carta|contrato|email|e-mail|mensagem de whatsapp|explica|explique|como fazer|resuma|resumo|traduza|traducao|ideias|lista de)\b/;
+
+  // GPS intent wins when user asks for maps, routes, or locations
+  if (gpsRegex.test(normalized) && !videoRegex.test(normalized) && !imageRegex.test(normalized)) {
+    return 'gps';
+  }
+
+  // Video intent wins unless user specifically asked only for a written script/roteiro without generating a video
+  if (videoRegex.test(normalized) && !/\b(apenas roteiro|so roteiro|texto de roteiro)\b/.test(normalized)) {
+    return 'video';
+  }
 
   if (hasImageAttachment && !eventRegex.test(normalized)) {
     if (imageRegex.test(normalized) || !codeOrTextRegex.test(normalized)) {
@@ -671,6 +749,148 @@ function detectStudioMode(
   }
 
   return 'chat';
+}
+
+const VALID_VIDEO_ASPECTS: ReadonlySet<DukeVideoAspectRatio> = new Set(['9:16', '16:9', '1:1']);
+const VALID_VIDEO_STYLES: ReadonlySet<DukeVideoVisualStyle> = new Set([
+  'cinematic_gold',
+  'neon_cyber',
+  'aurora_glass',
+  'royal_emerald',
+  'sunset_promo',
+  'editorial_noir',
+]);
+const VALID_VIDEO_MOODS: ReadonlySet<DukeVideoMusicMood> = new Set([
+  'epic_inspirational',
+  'modern_tech',
+  'corporate_upbeat',
+  'worship_warm',
+  'luxury_gala',
+]);
+const VALID_CAMERA_MOTIONS = new Set(['zoom_in', 'zoom_out', 'pan_left', 'pan_right']);
+const VALID_VIDEO_MOTIFS = new Set(['particles', 'beams', 'waves', 'rings', 'grid', 'bokeh']);
+
+function sanitizeVideoSpec(raw: unknown, userMessage: string): DukeVideoSpec {
+  const obj = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const aspectRaw = typeof obj.aspectRatio === 'string' ? obj.aspectRatio.trim() : '9:16';
+  const styleRaw = typeof obj.visualStyle === 'string' ? obj.visualStyle.trim() : 'cinematic_gold';
+  const moodRaw = typeof obj.musicMood === 'string' ? obj.musicMood.trim() : 'epic_inspirational';
+
+  const title = clampString(obj.title, userMessage.slice(0, 64) || 'Vídeo Oficial CONAE', 84);
+  const summary = clampString(
+    obj.summary,
+    'Vídeo cinematográfico produzido sob medida pela Inteligência Artificial do Robô Duque.',
+    220
+  );
+
+  const rawScenes = Array.isArray(obj.scenes) ? obj.scenes : [];
+  const parsedScenes: DukeVideoScene[] = rawScenes
+    .filter((s): s is Record<string, unknown> => Boolean(s && typeof s === 'object'))
+    .slice(0, 5)
+    .map((s, idx) => {
+      const motionRaw = typeof s.cameraMotion === 'string' ? s.cameraMotion.trim() : 'zoom_in';
+      const motifRaw = typeof s.visualMotif === 'string' ? s.visualMotif.trim() : 'particles';
+      return {
+        sceneNumber: idx + 1,
+        durationSec: clampNum(s.durationSec, 2.8, 2, 4.2),
+        badge: clampString(s.badge, idx === 0 ? 'DESTAQUE' : `CENA ${idx + 1}`, 38),
+        headline: clampString(s.headline, idx === 0 ? title : 'Transforme Sua Experiência', 72),
+        subheadline: clampString(s.subheadline, 'Produção moderna feita sob medida para você.', 130),
+        ctaText: typeof s.ctaText === 'string' ? s.ctaText.trim().slice(0, 36) : '',
+        cameraMotion: (VALID_CAMERA_MOTIONS.has(motionRaw)
+          ? motionRaw
+          : idx % 2 === 0
+            ? 'zoom_in'
+            : 'pan_right') as DukeVideoScene['cameraMotion'],
+        visualMotif: (VALID_VIDEO_MOTIFS.has(motifRaw)
+          ? motifRaw
+          : 'particles') as DukeVideoScene['visualMotif'],
+        bgStart: safeHex(s.bgStart, '#061912'),
+        bgMid: safeHex(s.bgMid, '#0e3a28'),
+        bgEnd: safeHex(s.bgEnd, '#030b07'),
+        accentColor: safeHex(s.accentColor, '#fbbf24'),
+      };
+    });
+
+  const scenes: DukeVideoScene[] =
+    parsedScenes.length >= 2
+      ? parsedScenes
+      : [
+          {
+            sceneNumber: 1,
+            durationSec: 2.8,
+            badge: 'APRESENTAÇÃO',
+            headline: title,
+            subheadline: summary,
+            cameraMotion: 'zoom_in',
+            visualMotif: 'beams',
+            bgStart: '#061912',
+            bgMid: '#0e3a28',
+            bgEnd: '#030b07',
+            accentColor: '#fbbf24',
+          },
+          {
+            sceneNumber: 2,
+            durationSec: 2.8,
+            badge: 'DESTAQUE',
+            headline: 'Design & Impacto Profissional',
+            subheadline: 'Conteúdo criado sob medida para envolver seu público.',
+            cameraMotion: 'pan_right',
+            visualMotif: 'particles',
+            bgStart: '#081b2e',
+            bgMid: '#123456',
+            bgEnd: '#040a14',
+            accentColor: '#38bdf8',
+          },
+          {
+            sceneNumber: 3,
+            durationSec: 2.8,
+            badge: 'OPORTUNIDADE',
+            headline: 'Compartilhe Agora',
+            subheadline: 'Pronto para WhatsApp, Instagram Reels, Status e YouTube.',
+            cameraMotion: 'zoom_out',
+            visualMotif: 'rings',
+            bgStart: '#1e0b1f',
+            bgMid: '#3a1339',
+            bgEnd: '#09040b',
+            accentColor: '#f59e0b',
+          },
+          {
+            sceneNumber: 4,
+            durationSec: 3.0,
+            badge: 'CHAMADA FINAL',
+            headline: 'Garanta Seu Lugar',
+            subheadline: 'Fale conosco agora e participe desta novidade oficial.',
+            ctaText: 'SAIBA MAIS AGORA',
+            cameraMotion: 'zoom_in',
+            visualMotif: 'bokeh',
+            bgStart: '#041710',
+            bgMid: '#0c3525',
+            bgEnd: '#020a06',
+            accentColor: '#fbbf24',
+          },
+        ];
+
+  const defaultVoiceover = scenes
+    .map((s) => `${s.headline}. ${s.subheadline}`)
+    .join(' ');
+
+  return {
+    title,
+    summary,
+    aspectRatio: VALID_VIDEO_ASPECTS.has(aspectRaw as DukeVideoAspectRatio)
+      ? (aspectRaw as DukeVideoAspectRatio)
+      : '9:16',
+    visualStyle: VALID_VIDEO_STYLES.has(styleRaw as DukeVideoVisualStyle)
+      ? (styleRaw as DukeVideoVisualStyle)
+      : 'cinematic_gold',
+    musicMood: VALID_VIDEO_MOODS.has(moodRaw as DukeVideoMusicMood)
+      ? (moodRaw as DukeVideoMusicMood)
+      : 'epic_inspirational',
+    voiceoverScript: clampString(obj.voiceoverScript, defaultVoiceover, 900),
+    footerBrand: clampString(obj.footerBrand, 'CONAE • ROBÔ DUQUE IA', 48),
+    scenes,
+  };
 }
 
 const DUKE_EVENT_RESPONSE_SCHEMA = {
@@ -946,6 +1166,151 @@ Regras obrigatórias:
 3. **PALETAS DISTINTAS E HARMONIOSAS:** cada uma das 3 opções deve ter um \`relightPreset\` e paleta hexadecimal (#RRGGBB) diferente e impactante.
 4. Escolha o "aspectRatio" conforme o pedido: "9:16" (Stories/Vertical), "16:9" (Capa/Horizontal), "4:5" (Feed vertical), "1:1" (Quadrado).
 5. Ajuste "brightness", "contrast", "saturate", "bokehDepth", "hdrClarity", "vignette", "textPosition" e "fontStyle" de forma inteligente para deixar a própria foto irreconhecivelmente mais bonita e moderna.`;
+
+const DUKE_VIDEO_RESPONSE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    reply: {
+      type: Type.STRING,
+      description:
+        'Explicação em português confirmando o vídeo criado sob medida, resumindo as 4 cenas, o formato, o estilo visual e a trilha sonora.',
+    },
+    videoSpec: {
+      type: Type.OBJECT,
+      properties: {
+        title: { type: Type.STRING },
+        summary: { type: Type.STRING },
+        aspectRatio: { type: Type.STRING, enum: ['9:16', '16:9', '1:1'] },
+        visualStyle: {
+          type: Type.STRING,
+          enum: [
+            'cinematic_gold',
+            'neon_cyber',
+            'aurora_glass',
+            'royal_emerald',
+            'sunset_promo',
+            'editorial_noir',
+          ],
+        },
+        musicMood: {
+          type: Type.STRING,
+          enum: [
+            'epic_inspirational',
+            'modern_tech',
+            'corporate_upbeat',
+            'worship_warm',
+            'luxury_gala',
+          ],
+        },
+        voiceoverScript: { type: Type.STRING },
+        footerBrand: { type: Type.STRING },
+        scenes: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              sceneNumber: { type: Type.INTEGER },
+              durationSec: { type: Type.NUMBER },
+              badge: { type: Type.STRING },
+              headline: { type: Type.STRING },
+              subheadline: { type: Type.STRING },
+              ctaText: { type: Type.STRING },
+              cameraMotion: {
+                type: Type.STRING,
+                enum: ['zoom_in', 'zoom_out', 'pan_left', 'pan_right'],
+              },
+              visualMotif: {
+                type: Type.STRING,
+                enum: ['particles', 'beams', 'waves', 'rings', 'grid', 'bokeh'],
+              },
+              bgStart: { type: Type.STRING },
+              bgMid: { type: Type.STRING },
+              bgEnd: { type: Type.STRING },
+              accentColor: { type: Type.STRING },
+            },
+            required: [
+              'sceneNumber',
+              'durationSec',
+              'badge',
+              'headline',
+              'subheadline',
+              'cameraMotion',
+              'visualMotif',
+              'bgStart',
+              'bgMid',
+              'bgEnd',
+              'accentColor',
+            ],
+          },
+        },
+      },
+      required: [
+        'title',
+        'summary',
+        'aspectRatio',
+        'visualStyle',
+        'musicMood',
+        'voiceoverScript',
+        'scenes',
+      ],
+    },
+  },
+  required: ['reply', 'videoSpec'],
+};
+
+const SYSTEM_INSTRUCTION_VIDEO = `Você é o **Diretor de Vídeos com Inteligência Artificial do Robô Duque (ConaeDuque)**!
+Sua missão é analisar profundamente o pedido do cliente (e qualquer foto anexada) e dirigir um **vídeo animado profissional completo de 4 cenas (~12 segundos)** pronto para renderização HD com trilha sonora musical, transições, partículas e narração em português.
+
+Regras obrigatórias:
+1. Analise exatamente o que o cliente pediu (tema, público, evento, produto, igreja, negócio, data, cidade, oferta ou estilo) e crie **4 cenas impactantes em português** com ritmo cinematográfico:
+   - **Cena 1 (Gancho / Abertura):** título curto e forte que prende atenção nos primeiros 2 segundos.
+   - **Cena 2 (Desenvolvimento / Benefício Principal):** destaca o coração da mensagem ou novidade.
+   - **Cena 3 (Diferencial / Prova / Emoção):** reforça valor, detalhes ou inspiração.
+   - **Cena 4 (Chamada Final com CTA):** texto forte + \`ctaText\` chamativo (ex: "INSCREVA-SE AGORA", "SAIBA MAIS", "FALE NO WHATSAPP").
+2. Escolha o \`aspectRatio\` adequado: \`"9:16"\` para Reels, TikTok, Shorts e Status WhatsApp (padrão); \`"16:9"\` para YouTube, telão e apresentações; \`"1:1"\` para Feed quadrado.
+3. Escolha \`visualStyle\` e \`musicMood\` coerentes com o pedido e varie \`cameraMotion\`, \`visualMotif\` e cores hexadecimais (#RRGGBB) harmoniosas entre as cenas para o vídeo ficar vivo e moderno.
+4. Escreva um \`voiceoverScript\` natural, envolvente e fluido em português do Brasil (30 a 55 palavras) combinando com as 4 cenas.
+5. Mantenha \`durationSec\` de cada cena entre 2.6 e 3.2 segundos (total ~11–12s) para o vídeo ficar dinâmico e rápido de renderizar.`;
+
+const GATEWAY_VIDEO_JSON_CONTRACT = `
+Responda EXCLUSIVAMENTE com um objeto JSON válido (sem texto extra) contendo "reply" e "videoSpec":
+{"reply":"string","videoSpec":{"title":"string","summary":"string","aspectRatio":"9:16","visualStyle":"cinematic_gold","musicMood":"epic_inspirational","voiceoverScript":"string","footerBrand":"CONAE • ROBÔ DUQUE IA","scenes":[{"sceneNumber":1,"durationSec":2.8,"badge":"DESTAQUE","headline":"string","subheadline":"string","ctaText":"","cameraMotion":"zoom_in","visualMotif":"beams","bgStart":"#041710","bgMid":"#0c3525","bgEnd":"#020a06","accentColor":"#fbbf24"}]}}`;
+
+const DUKE_GPS_RESPONSE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    reply: { type: Type.STRING },
+    gpsRequest: {
+      type: Type.OBJECT,
+      properties: {
+        action: { type: Type.STRING, enum: ['search', 'route', 'my_location'] },
+        query: { type: Type.STRING },
+        originQuery: { type: Type.STRING },
+        destinationQuery: { type: Type.STRING },
+        travelMode: { type: Type.STRING, enum: ['DRIVING', 'WALKING', 'BICYCLING', 'TRANSIT'] },
+        label: { type: Type.STRING },
+      },
+      required: ['action', 'query'],
+    },
+  },
+  required: ['reply', 'gpsRequest'],
+};
+
+const SYSTEM_INSTRUCTION_GPS = `Você é o **Assistente de GPS e Navegação Google Maps do Robô Duque (ConaeDuque)**!
+Sua função é APENAS interpretar o pedido do cliente em português para acionar o **Mapa GPS oficial do Google Maps Platform** no painel ao lado.
+
+Regras obrigatórias de conformidade:
+1. **NUNCA invente ou chute endereços exatos, CEPs, coordenadas, telefones, horários ou avaliações** da memória. Todos os dados reais de locais e rotas serão buscados ao vivo diretamente na API oficial do Google Maps no painel GPS.
+2. Classifique \`gpsRequest.action\`:
+   - \`"route"\`: quando o cliente pedir rota, caminho, trajeto ou "como chegar" de um ponto A para um ponto B (preencha \`originQuery\` se informado, \`destinationQuery\` com o destino, e \`query\` com o destino). Se o cliente disser "como chegar em X" sem informar origem, deixe \`originQuery\` vazio para o GPS usar a localização atual do dispositivo.
+   - \`"my_location"\`: quando o cliente pedir "minha localização atual", "onde eu estou" ou ativar o GPS dele.
+   - \`"search"\`: quando o cliente pedir qualquer localização, endereço, cidade, hotel, restaurante, igreja, hospital, aeroporto, ponto turístico ou "perto de mim" (coloque o termo limpo em \`query\`, ex: "Avenida Paulista, São Paulo" ou "Hotéis em Goiânia").
+3. Escolha \`travelMode\`: \`"DRIVING"\` (padrão), \`"WALKING"\` (a pé), \`"TRANSIT"\` (ônibus/metrô/transporte público) ou \`"BICYCLING"\` (bicicleta).
+4. Em \`reply\`, responda em 1 a 2 frases curtas e diretas em português avisando que você abriu o **GPS Google Maps** e está buscando exatamente o local/rota solicitado ao vivo no mapa.`;
+
+const GATEWAY_GPS_JSON_CONTRACT = `
+Responda EXCLUSIVAMENTE com um objeto JSON válido (sem texto extra) contendo "reply" e "gpsRequest":
+{"reply":"string","gpsRequest":{"action":"search","query":"string","originQuery":"","destinationQuery":"","travelMode":"DRIVING","label":"string"}}`;
 
 const VERCEL_AI_GATEWAY_URL = 'https://ai-gateway.vercel.sh/v1/chat/completions';
 const GATEWAY_MODELS = ['google/gemini-2.5-flash', 'google/gemini-2.5-flash-lite'] as const;
@@ -1437,11 +1802,198 @@ export async function runDukeEventChat(body: DukeChatRequestBody): Promise<DukeC
       shouldPublish: false,
       imageDesign,
       imageVariants,
-      quickOptions: imageQuickOptions,
+      quickOptions: [
+        ...imageQuickOptions.slice(0, 3),
+        {
+          label: 'Transformar em Vídeo HD',
+          prompt: `Crie um vídeo animado moderno em 9:16 usando esta foto/arte "${imageDesign.title}" com trilha musical e 4 cenas impactantes.`,
+          mode: 'video',
+        },
+      ],
     };
   }
 
-  // MODE 3: FULL EVENT BUILDER + FIXED LINK
+  // MODE 3: AI VIDEO STUDIO (ANALYZES USER PROMPT & DIRECTS 4-SCENE HD VIDEO + MUSIC + VOICEOVER)
+  if (resolvedMode === 'video') {
+    const promptText = [
+      '=== MODO: DIRETOR DE VÍDEO IA (4 CENAS ANIMADAS HD + TRILHA SONORA + NARRAÇÃO) ===',
+      hasImageAttachment
+        ? 'O cliente enviou uma FOTO que será animada em movimento Ken Burns dentro do vídeo! Analise a imagem e crie as 4 cenas em harmonia perfeita com ela.'
+        : 'Crie um vídeo completo de 4 cenas animadas modernas em alta definição analisando exatamente o pedido do cliente.',
+      '',
+      historyBlock ? `=== HISTÓRICO RECENTE ===\n${historyBlock}\n` : '',
+      attachmentTextNote ? `${attachmentTextNote}\n` : '',
+      '=== PEDIDO DE VÍDEO DO CLIENTE ===',
+      (
+        userMessage ||
+        'Crie um vídeo profissional impactante de divulgação oficial da CONAE em formato Reels 9:16.'
+      ).slice(0, 2500),
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    const { text: rawJson } = await generateWithConfiguredAi({
+      geminiKey,
+      gatewayToken,
+      systemInstruction: SYSTEM_INSTRUCTION_VIDEO,
+      gatewaySystemPrompt: `${SYSTEM_INSTRUCTION_VIDEO}\n${GATEWAY_VIDEO_JSON_CONTRACT}`,
+      promptText,
+      attachment,
+      responseSchema: DUKE_VIDEO_RESPONSE_SCHEMA,
+      expectJson: true,
+      deepThinking: Boolean(body.deepThinking),
+    });
+
+    let parsed: { reply?: unknown; videoSpec?: unknown };
+    try {
+      parsed = JSON.parse(rawJson) as { reply?: unknown; videoSpec?: unknown };
+    } catch {
+      const err = new Error('Não foi possível montar o roteiro visual do vídeo agora. Tente enviar seu pedido novamente.');
+      (err as Error & { statusCode?: number }).statusCode = 502;
+      throw err;
+    }
+
+    const videoSpec = sanitizeVideoSpec(parsed.videoSpec, userMessage);
+    const reply = clampString(
+      parsed.reply,
+      `Pronto! Analisei seu pedido e dirigi o vídeo **"${videoSpec.title}"** em **${videoSpec.scenes.length} cenas animadas (${videoSpec.aspectRatio})** com trilha musical e narração em português. Assista direto abaixo ou baixe o vídeo em HD!`,
+      2500
+    );
+
+    return {
+      modeUsed: 'video',
+      reply,
+      shouldPublish: false,
+      videoSpec,
+      quickOptions: [
+        {
+          label: 'Versão YouTube 16:9',
+          prompt: `Recrie o vídeo "${videoSpec.title}" em formato horizontal widescreen 16:9 para YouTube e telão com novo ritmo cinematográfico.`,
+          mode: 'video',
+        },
+        {
+          label: 'Estilo Neon Futurista',
+          prompt: `Recrie o vídeo "${videoSpec.title}" com estilo visual Neon Futurista (neon_cyber) e trilha moderna tecnológica.`,
+          mode: 'video',
+        },
+        {
+          label: 'Versão Feed Quadrado 1:1',
+          prompt: `Adapte o vídeo "${videoSpec.title}" para o formato quadrado 1:1 ideal para feed do Instagram e WhatsApp.`,
+          mode: 'video',
+        },
+        {
+          label: 'Criar Legenda p/ Postar',
+          prompt: `Escreva 3 opções de legenda envolvente com hashtags para postar o vídeo "${videoSpec.title}" no Instagram e WhatsApp.`,
+          mode: 'chat',
+        },
+      ],
+    };
+  }
+
+  // MODE 4: GOOGLE MAPS GPS LOOKUP & ROUTE INTENT (LIVE CLIENT PLACES/ROUTES API)
+  if (resolvedMode === 'gps') {
+    const promptText = [
+      '=== MODO: GPS GOOGLE MAPS (INTERPRETAR PEDIDO DE LOCALIZAÇÃO OU ROTA) ===',
+      historyBlock ? `=== HISTÓRICO RECENTE ===\n${historyBlock}\n` : '',
+      '=== PEDIDO DE LOCALIZAÇÃO / ROTA DO CLIENTE ===',
+      (userMessage || 'Ativar minha localização GPS atual no Google Maps.').slice(0, 1200),
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    let gpsRequest: DukeGpsRequest = {
+      action: /\b(minha localizacao|onde estou|onde eu estou)\b/i.test(userMessage)
+        ? 'my_location'
+        : /\b(rota|como chegar|trajeto|caminho)\b/i.test(userMessage)
+          ? 'route'
+          : 'search',
+      query: userMessage
+        .replace(/^(mostre|mostra|mostrar|busque|busca|buscar|procure|procurar|ache|achar|onde fica|localizacao de|localizacao do|localizacao da|no mapa|no gps|pelo gps|pelo google maps)\s+/gi, '')
+        .trim() || userMessage || 'Goiânia, GO',
+      travelMode: 'DRIVING',
+      label: userMessage.slice(0, 80) || 'Busca GPS Google Maps',
+    };
+    let reply = `Abrindo o **GPS Google Maps** ao vivo para localizar **"${gpsRequest.query}"** no mapa interativo ao lado!`;
+
+    try {
+      const { text: rawJson } = await generateWithConfiguredAi({
+        geminiKey,
+        gatewayToken,
+        systemInstruction: SYSTEM_INSTRUCTION_GPS,
+        gatewaySystemPrompt: `${SYSTEM_INSTRUCTION_GPS}\n${GATEWAY_GPS_JSON_CONTRACT}`,
+        promptText,
+        attachment: null,
+        responseSchema: DUKE_GPS_RESPONSE_SCHEMA,
+        expectJson: true,
+        deepThinking: false,
+      });
+
+      const parsed = JSON.parse(rawJson) as { reply?: unknown; gpsRequest?: Record<string, unknown> };
+      const reqObj = parsed.gpsRequest || {};
+      const actionRaw = String(reqObj.action || '').trim();
+      const action: 'search' | 'route' | 'my_location' =
+        actionRaw === 'route' || actionRaw === 'my_location' ? actionRaw : 'search';
+      const travelRaw = String(reqObj.travelMode || 'DRIVING').toUpperCase();
+      const travelMode: DukeGpsTravelMode =
+        travelRaw === 'WALKING' || travelRaw === 'BICYCLING' || travelRaw === 'TRANSIT'
+          ? travelRaw
+          : 'DRIVING';
+      const cleanQuery = clampString(reqObj.query, gpsRequest.query, 200);
+      const originQuery = clampString(reqObj.originQuery, '', 200) || undefined;
+      const destinationQuery = clampString(reqObj.destinationQuery, action === 'route' ? cleanQuery : '', 200) || undefined;
+
+      gpsRequest = {
+        action,
+        query: cleanQuery,
+        originQuery,
+        destinationQuery,
+        travelMode,
+        label: clampString(reqObj.label, cleanQuery, 90),
+      };
+      reply = clampString(
+        parsed.reply,
+        action === 'my_location'
+          ? 'Ativei a aba **GPS Google Maps** para localizar sua posição atual em tempo real no mapa.'
+          : action === 'route'
+            ? `Abri o **GPS Google Maps** para traçar a rota ao vivo até **${destinationQuery || cleanQuery}**.`
+            : `Buscando **${cleanQuery}** ao vivo no **GPS Google Maps**! Confira os marcadores, endereços reais e rotas no mapa ao lado.`,
+        1200
+      );
+    } catch {
+      // Keep deterministic gpsRequest fallback so the live Google Maps SDK executes immediately
+    }
+
+    return {
+      modeUsed: 'gps',
+      reply,
+      shouldPublish: false,
+      gpsRequest,
+      quickOptions: [
+        {
+          label: 'Traçar Rota de Carro',
+          prompt: `Trace a rota de carro no GPS Google Maps até ${gpsRequest.destinationQuery || gpsRequest.query}`,
+          mode: 'gps',
+        },
+        {
+          label: 'Minha Localização GPS',
+          prompt: 'Mostre minha localização GPS atual no Google Maps.',
+          mode: 'gps',
+        },
+        {
+          label: 'Hotéis Próximos',
+          prompt: `Busque hotéis próximos de ${gpsRequest.query} no GPS Google Maps`,
+          mode: 'gps',
+        },
+        {
+          label: 'Restaurantes Próximos',
+          prompt: `Busque restaurantes próximos de ${gpsRequest.query} no GPS Google Maps`,
+          mode: 'gps',
+        },
+      ],
+    };
+  }
+
+  // MODE 5: FULL EVENT BUILDER + FIXED LINK
   const safeCurrentEvent = body.currentEvent
     ? { ...body.currentEvent, bannerImageUrl: body.currentEvent.bannerImageUrl ? '[IMAGEM_CAPA_ATIVA]' : undefined }
     : null;
@@ -1541,7 +2093,7 @@ export default async function handler(req: VercelRequestLike, res: VercelRespons
       ok: true,
       service: 'conae-duque-evento',
       aiConfigured: Boolean(geminiKey || gatewayToken),
-      modes: ['auto', 'chat', 'image', 'event'],
+      modes: ['auto', 'chat', 'image', 'video', 'gps', 'event'],
     });
     return;
   }

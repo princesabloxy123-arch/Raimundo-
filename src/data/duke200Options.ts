@@ -1,6 +1,7 @@
 import type { DukeStudioMode } from '../types';
 
 export type DukeOptionCategory =
+  | 'Vídeos IA'
   | 'Fotos & Artes'
   | 'Eventos & Links'
   | 'WhatsApp & Redes'
@@ -21,6 +22,7 @@ export interface DukeCatalogOption {
 }
 
 export const DUKE_OPTION_CATEGORIES: DukeOptionCategory[] = [
+  'Vídeos IA',
   'Fotos & Artes',
   'Eventos & Links',
   'WhatsApp & Redes',
@@ -30,6 +32,8 @@ export const DUKE_OPTION_CATEGORIES: DukeOptionCategory[] = [
   'Pesquisa Google',
   'Documentos Oficiais',
 ];
+
+export const DUKE_VIDEO_OPTIONS_COUNT = 500;
 
 type RawOptionSeed = [title: string, description: string, prompt: string];
 
@@ -264,18 +268,103 @@ const DOCUMENTOS_SEEDS: RawOptionSeed[] = [
   ['Checklist Jurídico de Organização', 'Documentação básica para eventos', 'Liste 3 níveis de checklist documental e administrativo necessários para organizar um evento com tranquilidade e segurança.'],
 ];
 
-// Combinatorial matrices: 35 bases × 35 variations = 1,225 + 25 flagship seeds = 1,250 per category × 8 categories = 10,000 exact unique options!
+const VIDEO_IA_SEEDS: RawOptionSeed[] = [
+  ['Vídeo Reels Convite Congresso 9:16', 'Vídeo vertical cinematográfico com trilha e 4 cenas', 'Crie um vídeo animado cinematográfico 9:16 convidando para o Grande Congresso Nacional CONAE 2026 em estilo Esmeralda & Ouro com 4 cenas impactantes e chamada para inscrição.'],
+  ['Vídeo Animando Minha Foto HD', 'Transforma sua foto enviada em vídeo cinematográfico', 'Crie um vídeo moderno 9:16 animando a minha foto com movimento de câmera suave, partículas douradas, títulos elegantes e trilha inspiradora.'],
+  ['Vídeo Comercial de Vendas 9:16', 'Propaganda dinâmica com gancho forte e oferta', 'Gere um vídeo comercial vendedor 9:16 de alto impacto com gancho inicial forte, benefícios claros e botão de chamada para WhatsApp.'],
+  ['Vinheta Oficial de Abertura 16:9', 'Abertura widescreen HD para telão e YouTube', 'Crie uma vinheta oficial de abertura em formato 16:9 luxuoso dourado com efeitos de luz e apresentação solene de evento.'],
+  ['Vídeo Convite de Culto Especial', 'Chamada inspiradora com trilha de adoração', 'Gere um vídeo emocionante 9:16 convidando para o Grande Culto de Celebração e Milagres com trilha suave e visual iluminado.'],
+  ['Vídeo de Bom Dia Motivacional', 'Clipe curto com mensagem de fé p/ Status Zap', 'Crie um vídeo de Bom Dia inspirador 9:16 com mensagem de fé, prosperidade e gratidão pronto para postar no Status do WhatsApp.'],
+  ['Vídeo Institucional de Empresa', 'Apresentação executiva 16:9 de marca e missão', 'Gere um vídeo institucional corporativo 16:9 apresentando visão, valores, diferenciais e credibilidade da nossa empresa.'],
+  ['Vídeo Teaser de Lançamento VIP', 'Gera curiosidade máxima em 4 cenas rápidas', 'Crie um vídeo teaser de lançamento VIP 9:16 em estilo Neon Futurista gerando expectativa e contagem regressiva.'],
+  ['Vídeo Convite de Casamento', 'Animação romântica dourada p/ enviar no Zap', 'Gere um vídeo convite de casamento elegante 9:16 com brilho suave, estilo luxo dourado e confirmação de presença.'],
+  ['Vídeo Homenagem de Aniversário', 'Clipe festivo personalizado para compartilhar', 'Crie um vídeo comemorativo de Feliz Aniversário 9:16 vibrante com bokeh dourado e mensagem emocionante de parabéns.'],
+  ['Vídeo Divulgação Curso & Mentoria', 'Anúncio de vagas abertas com autoridade', 'Gere um vídeo promocional 9:16 anunciando nova turma aberta de Curso & Mentoria VIP com benefícios e chamada para garantir vaga.'],
+  ['Vídeo Conferência de Mulheres', 'Visual elegante rosa/violeta com trilha suave', 'Crie um vídeo convite 9:16 inspirador para Conferência de Mulheres com visual sofisticado, luz aurora e mensagem marcante.'],
+  ['Vídeo Congresso de Jovens Neon', 'Ritmo acelerado e visual futurista vibrante', 'Gere um vídeo dinâmico 9:16 em estilo Neon Cyber para o Congresso de Jovens com energia jovem e chamada impactante.'],
+  ['Vídeo Oferta Relâmpago 48h', 'Urgência real para fechar vendas hoje', 'Crie um vídeo promocional de Oferta Relâmpago 48 Horas em formato 9:16 com cores vibrantes Sunset e chamada urgente.'],
+  ['Vídeo Divulgação Hotel & Resort', 'Vitrine turística moderna para reservas VIP', 'Gere um vídeo turístico luxuoso 16:9 apresentando conforto, descontos exclusivos e reservas VIP em hotéis conveniados.'],
+  ['Vídeo Chamada p/ Live Ao Vivo', 'Lembrete marcante "É HOJE AO VIVO!"', 'Crie um vídeo rápido 9:16 avisando que hoje tem Transmissão Ao Vivo Imperdível com horário e lembrete de participação.'],
+  ['Vídeo Convite Encontro de Casais', 'Clima acolhedor de família e jantar de gala', 'Gere um vídeo elegante 9:16 convidando casais para um Jantar de Gala e Encontro da Família com estilo Gala Dourada.'],
+  ['Vídeo Apresentação Rede de Afiliados', 'Mostra benefícios e oportunidades de parceria', 'Crie um vídeo executivo 1:1 apresentando os benefícios de ser Afiliado e Parceiro Oficial da Rede CONAE.'],
+  ['Vídeo Reflexão & Versículo do Dia', 'Mensagem bíblica animada para compartilhar', 'Gere um vídeo devocional 9:16 com versículo bíblico, reflexão rápida de paz e trilha musical serena.'],
+  ['Vídeo Agradecimento Pós-Evento', 'Homenagem emocionante para quem participou', 'Crie um vídeo oficial de Muito Obrigado 16:9 celebrando o sucesso do evento e agradecendo participantes e parceiros.'],
+  ['Vídeo Fórum de Empresários 16:9', 'Visual corporativo premium para negócios', 'Gere um vídeo de abertura 16:9 para o Fórum de Empresários e Investidores em estilo Azul/Esmeralda Executivo.'],
+  ['Vídeo Depoimento & Prova Social', 'Destaca conquistas e resultados reais', 'Crie um vídeo 9:16 de prova social destacando resultados reais, confiança e satisfação dos clientes.'],
+  ['Vídeo Contagem Regressiva Evento', 'Faltam poucos dias — aquece o público', 'Gere um vídeo 9:16 de contagem regressiva "ESTÁ CHEGANDO!" para aquecer o público nos grupos de WhatsApp.'],
+  ['Vídeo Campanha de Ação Social', 'Sensibiliza e convida voluntários e apoios', 'Crie um vídeo tocante 1:1 divulgando nossa Grande Ação Social Comunitária e convidando voluntários para fazer o bem.'],
+  ['Vídeo Vinheta de Encerramento 16:9', 'Fechamento profissional com contatos e CTA', 'Gere um vídeo de encerramento 16:9 luxuoso com agradecimento final e convite para seguir nossas redes oficiais.'],
+];
+
+// Combinatorial matrices: 500 video options (25 seeds + 25×19 = 500) + 10,000 options across 8 categories (8 × 1,250) = 10,500 exact unique options!
 interface CategoryMatrix {
   category: DukeOptionCategory;
   mode: DukeStudioMode;
   seeds: RawOptionSeed[];
-  bases: string[]; // 35 items
-  modifiers: string[]; // 35 items
+  bases: string[];
+  modifiers: string[];
   makeDescription: (base: string, mod: string) => string;
   makePrompt: (base: string, mod: string) => string;
 }
 
 const MATRICES: CategoryMatrix[] = [
+  {
+    category: 'Vídeos IA',
+    mode: 'video',
+    seeds: VIDEO_IA_SEEDS,
+    // 25 bases × 19 modifiers = 475 + 25 flagship seeds = 500 exact AI Video options!
+    bases: [
+      'Vídeo Reels 9:16',
+      'Vídeo YouTube 16:9',
+      'Vídeo Feed 1:1',
+      'Vídeo Convite Animado',
+      'Vídeo Comercial Vendas',
+      'Vídeo Institucional',
+      'Vinheta de Telão 16:9',
+      'Vídeo Teaser Lançamento',
+      'Vídeo Status WhatsApp',
+      'Vídeo TikTok Dinâmico',
+      'Vídeo Shorts Rápido',
+      'Vídeo com Foto Animada',
+      'Vídeo Oferta Relâmpago',
+      'Vídeo Motivacional',
+      'Vídeo Devocional & Fé',
+      'Vídeo Abertura Evento',
+      'Vídeo Encerramento VIP',
+      'Vídeo Chamada p/ Live',
+      'Vídeo Contagem Regressiva',
+      'Vídeo Prova Social',
+      'Vídeo Homenagem Oficial',
+      'Vídeo Anúncio de Curso',
+      'Vídeo Vitrine de Serviços',
+      'Vídeo Boas-Vindas VIP',
+      'Vídeo Retrospectiva',
+    ],
+    modifiers: [
+      'Congresso CONAE Esmeralda & Ouro',
+      'Estilo Neon Futurista Cyber',
+      'Estilo Gala Dourada de Luxo',
+      'Estilo Vidro Aurora Moderno',
+      'Estilo Cinema Noir Elegante',
+      'Estilo Pôr do Sol Promocional',
+      'para Culto & Igreja Local',
+      'para Conferência de Mulheres',
+      'para Congresso de Jovens',
+      'para Encontro de Casais',
+      'para Fórum de Empresários',
+      'para Rede de Afiliados',
+      'para Hotéis & Turismo VIP',
+      'para Mentoria & Treinamento',
+      'para Promoção de Loja',
+      'para Casamento & Família',
+      'para Feliz Aniversário',
+      'para Ação Social & Missões',
+      'para Bom Dia nos Grupos',
+    ],
+    makeDescription: (base, mod) => `Vídeo HD com 4 cenas animadas e trilha: ${base} — ${mod}`,
+    makePrompt: (base, mod) =>
+      `Analise este pedido e gere um vídeo animado HD completo em 4 cenas com trilha musical e narração em português: "${base} — ${mod}".`,
+  },
   {
     category: 'Fotos & Artes',
     mode: 'image',

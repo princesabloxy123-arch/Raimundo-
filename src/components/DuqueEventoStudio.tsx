@@ -22,6 +22,7 @@ import {
   Download,
   ExternalLink,
   FileText,
+  Film,
   FolderKanban,
   Globe,
   Image as ImageIcon,
@@ -29,12 +30,15 @@ import {
   Link2,
   Loader2,
   LogIn,
+  MapPin,
   MessageCircle,
   MessageSquareText,
   Mic,
   MicOff,
+  Music,
   Palette,
   Paperclip,
+  Play,
   Plus,
   QrCode,
   RefreshCw,
@@ -45,6 +49,7 @@ import {
   Trash2,
   Type as TypeIcon,
   User as UserIcon,
+  Video,
   Volume2,
   VolumeX,
   Wand2,
@@ -58,6 +63,8 @@ import type {
   DukeEventSpec,
   DukeEventTheme,
   DukeGeneratedAsset,
+  DukeGeneratedVideo,
+  DukeGpsRequest,
   DukeGraphicOverlay,
   DukeImageAspectRatio,
   DukeImageDesignSpec,
@@ -68,17 +75,24 @@ import type {
   DukeQuickOption,
   DukeRelightPreset,
   DukeStudioMode,
+  DukeVideoAspectRatio,
+  DukeVideoMusicMood,
+  DukeVideoSpec,
+  DukeVideoVisualStyle,
   DukeWebSource,
   UserProfile,
 } from '../types';
 import {
   DUKE_10000_OPTIONS,
   DUKE_OPTION_CATEGORIES,
+  DUKE_VIDEO_OPTIONS_COUNT,
   type DukeCatalogOption,
   type DukeOptionCategory,
 } from '../data/duke200Options';
 import { compressDataUrlForFirestoreBanner, renderDukeImageStudio } from '../utils/dukeImageStudio';
+import { renderDukeVideoStudio } from '../utils/dukeVideoStudio';
 import { DukeRichMessage } from './DukeRichMessage';
+import { DukeGpsMapPanel } from './DukeGpsMapPanel';
 import { buildStandaloneEventHtml, PublicEventPage } from './PublicEventPage';
 
 interface DuqueEventoStudioProps {
@@ -97,6 +111,8 @@ const MODE_OPTIONS: Array<{ id: DukeStudioMode; label: string }> = [
   { id: 'auto', label: 'Automático' },
   { id: 'chat', label: 'Texto & Código' },
   { id: 'image', label: 'Foto & Arte' },
+  { id: 'video', label: 'Vídeo IA' },
+  { id: 'gps', label: 'GPS Maps' },
   { id: 'event', label: 'Evento & Link' },
 ];
 
@@ -197,7 +213,7 @@ const WELCOME_MESSAGE: DukeChatMessage = {
   role: 'assistant',
   createdAt: new Date().toISOString(),
   content:
-    'Olá! Sou o **Robô Duque da CONAE**. Busco no **Google automaticamente**, entrego **várias opções** em tudo o que você pedir, tenho **10.000 opções prontas de 1 clique** abaixo, e toda vez que você enviar ou pedir para mudar uma foto eu faço um **design moderno direto na própria foto** (iluminação HDR, arte digital, neon e estúdio 3D) em **3 opções** para você escolher na hora!',
+    'Olá! Sou o **Robô Duque da CONAE**. Busco no **Google automaticamente**, crio **Vídeos IA em HD prontos para assistir e baixar** (com **500 opções de vídeo** + conversão de qualquer uma das **10.000 opções**), tenho **GPS Google Maps ao vivo** para localizar qualquer endereço ou rota, e transformo suas fotos em **3 opções modernas** na hora!',
 };
 
 export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
@@ -226,6 +242,11 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
 
   const [generatedImages, setGeneratedImages] = useState<DukeGeneratedAsset[]>([]);
   const [activeImageId, setActiveImageId] = useState<string | null>(null);
+  const [generatedVideos, setGeneratedVideos] = useState<DukeGeneratedVideo[]>([]);
+  const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
+  const [renderingVideo, setRenderingVideo] = useState(false);
+  const [videoRenderProgress, setVideoRenderProgress] = useState(0);
+  const [activeGpsRequest, setActiveGpsRequest] = useState<DukeGpsRequest | null>(null);
   const [selectedChatVariantByMsg, setSelectedChatVariantByMsg] = useState<Record<string, number>>({});
   const [showOriginalCompare, setShowOriginalCompare] = useState(false);
   const [updatingLiveImage, setUpdatingLiveImage] = useState(false);
@@ -234,7 +255,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
   const [appliedBannerId, setAppliedBannerId] = useState<string | null>(null);
 
   const [myEvents, setMyEvents] = useState<DukeEventRecord[]>([]);
-  const [rightTab, setRightTab] = useState<'preview' | 'image' | 'publish' | 'saved'>('preview');
+  const [rightTab, setRightTab] = useState<'preview' | 'image' | 'video' | 'gps' | 'publish' | 'saved'>('preview');
   const [mobilePane, setMobilePane] = useState<'chat' | 'workspace'>('chat');
   const [copiedLink, setCopiedLink] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
@@ -291,6 +312,11 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
   const activeImageAsset = useMemo(
     () => generatedImages.find((img) => img.id === activeImageId) || generatedImages[0] || null,
     [generatedImages, activeImageId]
+  );
+
+  const activeVideoAsset = useMemo(
+    () => generatedVideos.find((v) => v.id === activeVideoId) || generatedVideos[0] || null,
+    [generatedVideos, activeVideoId]
   );
 
   const chatEndRef = useRef<HTMLDivElement | null>(null);
@@ -685,24 +711,28 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
       const rawText = await response.text();
       let payload: {
         error?: string;
-        modeUsed?: 'chat' | 'image' | 'event';
+        modeUsed?: 'chat' | 'image' | 'video' | 'gps' | 'event';
         reply?: string;
         shouldPublish?: boolean;
         event?: DukeEventSpec;
         imageDesign?: DukeImageDesignSpec;
         imageVariants?: DukeImageDesignSpec[];
+        videoSpec?: DukeVideoSpec;
+        gpsRequest?: DukeGpsRequest;
         sources?: DukeWebSource[];
         quickOptions?: DukeQuickOption[];
       };
       try {
         payload = JSON.parse(rawText) as {
           error?: string;
-          modeUsed?: 'chat' | 'image' | 'event';
+          modeUsed?: 'chat' | 'image' | 'video' | 'gps' | 'event';
           reply?: string;
           shouldPublish?: boolean;
           event?: DukeEventSpec;
           imageDesign?: DukeImageDesignSpec;
           imageVariants?: DukeImageDesignSpec[];
+          videoSpec?: DukeVideoSpec;
+          gpsRequest?: DukeGpsRequest;
           sources?: DukeWebSource[];
           quickOptions?: DukeQuickOption[];
         };
@@ -714,18 +744,75 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
         );
       }
 
-      if (!response.ok || (!payload.reply && !payload.event && !payload.imageDesign)) {
+      if (
+        !response.ok ||
+        (!payload.reply && !payload.event && !payload.imageDesign && !payload.videoSpec && !payload.gpsRequest)
+      ) {
         throw new Error(
           payload.error || `Não foi possível processar seu pedido (HTTP ${response.status}).`
         );
       }
 
-      const modeUsed = payload.modeUsed || (payload.imageDesign ? 'image' : payload.event ? 'event' : 'chat');
+      const modeUsed =
+        payload.modeUsed ||
+        (payload.videoSpec
+          ? 'video'
+          : payload.gpsRequest
+            ? 'gps'
+            : payload.imageDesign
+              ? 'image'
+              : payload.event
+                ? 'event'
+                : 'chat');
       let publishedUrl: string | undefined;
       let generatedImage: DukeGeneratedAsset | undefined;
       let generatedBatch: DukeGeneratedAsset[] | undefined;
+      let generatedVideo: DukeGeneratedVideo | undefined;
+      let resolvedGpsRequest: DukeGpsRequest | undefined;
 
-      if (modeUsed === 'image' && (payload.imageVariants?.length || payload.imageDesign)) {
+      if (modeUsed === 'video' && payload.videoSpec) {
+        const sourcePhotoUrl =
+          activeAttachment?.isImage && activeAttachment.dataUrl
+            ? activeAttachment.dataUrl
+            : undefined;
+        setRenderingVideo(true);
+        setVideoRenderProgress(4);
+        try {
+          const rendered = await renderDukeVideoStudio(
+            payload.videoSpec,
+            sourcePhotoUrl,
+            (pct) => setVideoRenderProgress(pct)
+          );
+          const videoAsset: DukeGeneratedVideo = {
+            id: `vid_${Date.now()}`,
+            title: payload.videoSpec.title || 'Vídeo IA Robô Duque',
+            aspectRatio: payload.videoSpec.aspectRatio || '9:16',
+            videoUrl: rendered.videoUrl,
+            mimeType: rendered.mimeType,
+            fileExtension: rendered.fileExtension,
+            thumbnailDataUrl: rendered.thumbnailDataUrl,
+            durationSec: rendered.durationSec,
+            sourcePhotoUrl,
+            videoSpec: payload.videoSpec,
+            createdAt: new Date().toISOString(),
+          };
+          generatedVideo = videoAsset;
+          setGeneratedVideos((prev) => [videoAsset, ...prev].slice(0, 12));
+          setActiveVideoId(videoAsset.id);
+          setRightTab('video');
+        } finally {
+          setRenderingVideo(false);
+          setVideoRenderProgress(0);
+        }
+      } else if (modeUsed === 'gps' && payload.gpsRequest) {
+        resolvedGpsRequest = {
+          ...payload.gpsRequest,
+          requestId: `gps_${Date.now()}`,
+        };
+        setActiveGpsRequest(resolvedGpsRequest);
+        setRightTab('gps');
+        setMobilePane('workspace');
+      } else if (modeUsed === 'image' && (payload.imageVariants?.length || payload.imageDesign)) {
         const specsToRender =
           Array.isArray(payload.imageVariants) && payload.imageVariants.length > 0
             ? payload.imageVariants.slice(0, 3)
@@ -785,13 +872,19 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
         modeUsed,
         content:
           payload.reply ||
-          (modeUsed === 'image'
-            ? 'Pronto! Criei 3 opções modernas em alta definição para você escolher.'
-            : 'Pronto! Veja as opções abaixo.'),
+          (modeUsed === 'video'
+            ? 'Pronto! Seu vídeo em HD foi renderizado e está liberado para assistir e baixar abaixo.'
+            : modeUsed === 'gps'
+              ? 'Abri o GPS Google Maps ao vivo no painel ao lado com a localização solicitada.'
+              : modeUsed === 'image'
+                ? 'Pronto! Criei 3 opções modernas em alta definição para você escolher.'
+                : 'Pronto! Veja as opções abaixo.'),
         createdAt: new Date().toISOString(),
         publishedUrl,
         generatedImage,
         generatedImages: generatedBatch,
+        generatedVideo,
+        gpsRequest: resolvedGpsRequest,
         sources: Array.isArray(payload.sources) && payload.sources.length > 0 ? payload.sources : undefined,
         quickOptions:
           Array.isArray(payload.quickOptions) && payload.quickOptions.length > 0
@@ -817,6 +910,57 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
     document.body.appendChild(a);
     a.click();
     a.remove();
+  };
+
+  const handleDownloadGeneratedVideo = (asset: DukeGeneratedVideo) => {
+    if (!asset.videoUrl) {
+      setApiError('Este navegador não liberou a gravação direta do arquivo de vídeo. Tente no Chrome ou Edge.');
+      return;
+    }
+    const a = document.createElement('a');
+    a.href = asset.videoUrl;
+    a.download = `${sanitizeSlug(asset.title)}.${asset.fileExtension || 'webm'}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
+  const handleRerenderActiveVideo = async (patch: Partial<DukeVideoSpec>) => {
+    if (!activeVideoAsset || renderingVideo) return;
+    const nextSpec: DukeVideoSpec = {
+      ...activeVideoAsset.videoSpec,
+      ...patch,
+    };
+    setRenderingVideo(true);
+    setVideoRenderProgress(4);
+    setApiError(null);
+    try {
+      const rendered = await renderDukeVideoStudio(
+        nextSpec,
+        activeVideoAsset.sourcePhotoUrl,
+        (pct) => setVideoRenderProgress(pct)
+      );
+      const updatedAsset: DukeGeneratedVideo = {
+        ...activeVideoAsset,
+        id: `vid_${Date.now()}`,
+        title: nextSpec.title || activeVideoAsset.title,
+        aspectRatio: nextSpec.aspectRatio,
+        videoUrl: rendered.videoUrl,
+        mimeType: rendered.mimeType,
+        fileExtension: rendered.fileExtension,
+        thumbnailDataUrl: rendered.thumbnailDataUrl,
+        durationSec: rendered.durationSec,
+        videoSpec: nextSpec,
+        createdAt: new Date().toISOString(),
+      };
+      setGeneratedVideos((prev) => [updatedAsset, ...prev].slice(0, 12));
+      setActiveVideoId(updatedAsset.id);
+    } catch (err) {
+      setApiError(err instanceof Error ? err.message : 'Erro ao renderizar nova versão do vídeo.');
+    } finally {
+      setRenderingVideo(false);
+      setVideoRenderProgress(0);
+    }
   };
 
   const handleApplyImageToEventBanner = async (asset: DukeGeneratedAsset) => {
@@ -977,10 +1121,32 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
           : activeImageAsset?.originalDataUrl
             ? { name: 'foto-atual.jpg', dataUrl: activeImageAsset.originalDataUrl }
             : undefined;
-    if (opt.mode === 'image' && activePhoto) {
-      void handleSendMessage(opt.prompt, 'image', activePhoto);
+    if ((opt.mode === 'image' || opt.mode === 'video') && activePhoto) {
+      void handleSendMessage(opt.prompt, opt.mode, activePhoto);
     } else {
       void handleSendMessage(opt.prompt, opt.mode);
+    }
+  };
+
+  const handleRunCatalogOptionAsVideo = (opt: DukeCatalogOption) => {
+    setStudioMode('video');
+    setShow200Catalog(false);
+    const activePhoto =
+      stagedAttachment?.isImage && stagedAttachment.dataUrl
+        ? { name: stagedAttachment.name, dataUrl: stagedAttachment.dataUrl }
+        : lastUploadedPhoto
+          ? lastUploadedPhoto
+          : activeImageAsset?.originalDataUrl
+            ? { name: 'foto-atual.jpg', dataUrl: activeImageAsset.originalDataUrl }
+            : undefined;
+    const videoPrompt =
+      opt.mode === 'video'
+        ? opt.prompt
+        : `Crie um vídeo animado profissional em HD (9:16) com trilha musical e 4 cenas impactantes baseado nesta opção: ${opt.title} — ${opt.prompt}`;
+    if (activePhoto) {
+      void handleSendMessage(videoPrompt, 'video', activePhoto);
+    } else {
+      void handleSendMessage(videoPrompt, 'video');
     }
   };
 
@@ -1117,13 +1283,13 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
   return (
     <div className="min-h-screen lg:h-screen lg:overflow-hidden bg-[#040a07] text-emerald-50 flex flex-col relative">
       {/* CENTERED MOVING 3D AI BRAIN OVERLAY WHILE WORKING ON A REQUEST */}
-      {(sending || publishing) && (
+      {(sending || publishing || renderingVideo) && (
         <div
           role="status"
           aria-live="polite"
           className="fixed inset-0 z-50 flex items-center justify-center bg-[#020805]/74 backdrop-blur-sm p-6"
         >
-          <div className="flex flex-col items-center text-center gap-5 max-w-sm">
+          <div className="flex flex-col items-center text-center gap-5 max-w-sm w-full">
             <div className="conae-brain-3d-stage">
               <span aria-hidden="true" className="conae-brain-3d-aura" />
               <span aria-hidden="true" className="conae-brain-3d-ring" />
@@ -1138,17 +1304,29 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
               </div>
             </div>
 
-            <div className="rounded-2xl bg-[#06160f]/92 border border-amber-400/45 px-5 py-3 shadow-2xl space-y-1">
+            <div className="rounded-2xl bg-[#06160f]/92 border border-amber-400/45 px-5 py-3.5 shadow-2xl space-y-2 w-full">
               <p className="font-display text-base sm:text-lg font-bold conae-gold-text">
-                {publishing
-                  ? 'Salvando e gerando seu link oficial...'
-                  : 'Construindo seu pedido agora...'}
+                {renderingVideo
+                  ? `Renderizando seu Vídeo HD (${videoRenderProgress}%)...`
+                  : publishing
+                    ? 'Salvando e gerando seu link oficial...'
+                    : 'Construindo seu pedido agora...'}
               </p>
               <p className="text-xs text-emerald-100/85">
-                {publishing
-                  ? 'Gravando no banco Firebase e ativando o endereço do seu evento.'
-                  : 'Montando painéis, programação e estrutura sob medida para você.'}
+                {renderingVideo
+                  ? 'Gravando cenas animadas em 30 FPS com trilha sonora para assistir e baixar.'
+                  : publishing
+                    ? 'Gravando no banco Firebase e ativando o endereço do seu evento.'
+                    : 'Analisando seu pedido com Inteligência Artificial sob medida para você.'}
               </p>
+              {renderingVideo && (
+                <div className="w-full h-2 rounded-full bg-black/60 border border-amber-400/30 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-emerald-400 via-amber-400 to-amber-300 transition-all duration-150"
+                    style={{ width: `${Math.max(5, videoRenderProgress)}%` }}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1251,7 +1429,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
       </header>
 
       {/* MOBILE VIEW SWITCHER */}
-      <div className="lg:hidden grid grid-cols-2 border-b border-amber-400/20 bg-[#06120c]">
+      <div className="lg:hidden grid grid-cols-3 border-b border-amber-400/20 bg-[#06120c]">
         <button
           type="button"
           onClick={() => setMobilePane('chat')}
@@ -1261,18 +1439,38 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
               : 'text-emerald-200/70'
           }`}
         >
-          Conversa Robô Duque
+          Chat Duque
         </button>
         <button
           type="button"
-          onClick={() => setMobilePane('workspace')}
+          onClick={() => {
+            if (rightTab === 'gps') {
+              setRightTab(generatedVideos.length > 0 ? 'video' : generatedImages.length > 0 ? 'image' : 'preview');
+            }
+            setMobilePane('workspace');
+          }}
           className={`py-2.5 text-xs font-bold cursor-pointer ${
-            mobilePane === 'workspace'
+            mobilePane === 'workspace' && rightTab !== 'gps'
               ? 'text-amber-300 border-b-2 border-amber-400 bg-amber-400/10'
               : 'text-emerald-200/70'
           }`}
         >
-          Prévia & Link Fixo {currentEvent ? '✓' : ''}
+          Estúdio {generatedVideos.length > 0 ? `(${generatedVideos.length} Víd)` : currentEvent ? '✓' : ''}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setRightTab('gps');
+            setMobilePane('workspace');
+          }}
+          className={`py-2.5 text-xs font-bold cursor-pointer inline-flex items-center justify-center gap-1 ${
+            mobilePane === 'workspace' && rightTab === 'gps'
+              ? 'text-amber-300 border-b-2 border-amber-400 bg-amber-400/10'
+              : 'text-emerald-200/70'
+          }`}
+        >
+          <MapPin className="w-3.5 h-3.5" />
+          <span>GPS Maps</span>
         </button>
       </div>
 
@@ -1457,6 +1655,115 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                     );
                   })()}
 
+                  {msg.generatedVideo && (
+                    <div className="rounded-xl overflow-hidden border border-amber-400/50 bg-black/60 space-y-2.5 p-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300 inline-flex items-center gap-1">
+                          <Film className="w-3.5 h-3.5" />
+                          Vídeo IA Pronto · {msg.generatedVideo.aspectRatio} · {msg.generatedVideo.durationSec}s
+                        </span>
+                        <span className="text-[10px] font-mono text-emerald-300 uppercase">
+                          .{msg.generatedVideo.fileExtension}
+                        </span>
+                      </div>
+
+                      <div className="rounded-lg overflow-hidden bg-black flex items-center justify-center">
+                        {msg.generatedVideo.videoUrl ? (
+                          <video
+                            src={msg.generatedVideo.videoUrl}
+                            poster={msg.generatedVideo.thumbnailDataUrl}
+                            controls
+                            playsInline
+                            className="w-full max-h-72 object-contain block"
+                          />
+                        ) : (
+                          <img
+                            src={msg.generatedVideo.thumbnailDataUrl}
+                            alt={msg.generatedVideo.title}
+                            className="w-full max-h-64 object-contain block"
+                          />
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadGeneratedVideo(msg.generatedVideo!)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-xs cursor-pointer"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Baixar Vídeo (.{msg.generatedVideo.fileExtension})</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveVideoId(msg.generatedVideo!.id);
+                            setRightTab('video');
+                            setMobilePane('workspace');
+                          }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-700/85 hover:bg-emerald-600 text-white font-semibold text-[11px] cursor-pointer"
+                        >
+                          <Video className="w-3 h-3" />
+                          <span>Abrir Estúdio Vídeo</span>
+                        </button>
+                        {msg.generatedVideo.videoSpec.voiceoverScript && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleToggleSpeakMessage(
+                                `${msg.id}_vo`,
+                                msg.generatedVideo!.videoSpec.voiceoverScript
+                              )
+                            }
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-black/60 hover:bg-black/80 border border-amber-400/35 text-amber-200 font-semibold text-[11px] cursor-pointer"
+                          >
+                            {speakingMsgId === `${msg.id}_vo` ? (
+                              <VolumeX className="w-3 h-3" />
+                            ) : (
+                              <Volume2 className="w-3 h-3" />
+                            )}
+                            <span>{speakingMsgId === `${msg.id}_vo` ? 'Parar Voz' : 'Ouvir Narração'}</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {msg.gpsRequest && (
+                    <div className="rounded-xl bg-emerald-950/60 border border-emerald-400/45 p-2.5 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <MapPin className="w-4 h-4 text-amber-300 shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-bold text-amber-200 truncate">
+                            GPS Google Maps: {msg.gpsRequest.label || msg.gpsRequest.query}
+                          </p>
+                          <p className="text-[10px] text-emerald-200/80">
+                            {msg.gpsRequest.action === 'route'
+                              ? 'Rota ativa no mapa GPS'
+                              : msg.gpsRequest.action === 'my_location'
+                                ? 'Localização atual em tempo real'
+                                : 'Busca ao vivo no Google Maps'}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveGpsRequest({
+                            ...msg.gpsRequest!,
+                            requestId: `gps_reopen_${Date.now()}`,
+                          });
+                          setRightTab('gps');
+                          setMobilePane('workspace');
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-[11px] cursor-pointer shrink-0"
+                      >
+                        <MapPin className="w-3 h-3" />
+                        <span>Abrir no Mapa GPS</span>
+                      </button>
+                    </div>
+                  )}
+
                   {msg.role === 'assistant' && msg.quickOptions && msg.quickOptions.length > 0 && (
                     <div className="pt-1.5 space-y-1.5 border-t border-white/10">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300/85 block">
@@ -1467,16 +1774,17 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                           <button
                             key={`${msg.id}_opt_${idx}`}
                             type="button"
-                            disabled={sending}
+                            disabled={sending || renderingVideo}
                             onClick={() => {
                               const nextMode = opt.mode || studioMode;
                               if (opt.mode) setStudioMode(opt.mode);
                               const basePhoto =
                                 msg.generatedImages?.[0]?.originalDataUrl ||
                                 msg.generatedImage?.originalDataUrl ||
-                                activeImageAsset?.originalDataUrl;
-                              if (opt.mode === 'image' && basePhoto) {
-                                void handleSendMessage(opt.prompt, 'image', {
+                                activeImageAsset?.originalDataUrl ||
+                                lastUploadedPhoto?.dataUrl;
+                              if ((opt.mode === 'image' || opt.mode === 'video') && basePhoto) {
+                                void handleSendMessage(opt.prompt, opt.mode, {
                                   name: 'foto-atual.jpg',
                                   dataUrl: basePhoto,
                                 });
@@ -1560,7 +1868,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
               </div>
             ))}
 
-            {/* Scrollable 10,000-Option 1-Click Virtualized Catalog inside the Robô Duque chat */}
+            {/* Scrollable 10,500-Option 1-Click Virtualized Catalog (500 AI Video Options + 10,000 Options, all convertible to Video) */}
             {show200Catalog && !sending && (
               <div className="pt-1">
                 <div className="rounded-2xl bg-[#071610] border border-amber-400/40 p-3 space-y-2.5 shadow-lg">
@@ -1568,18 +1876,21 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                     <div className="min-w-0">
                       <p className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
                         <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                        <span>10.000 Opções Prontas — Clique e o Robô Faz</span>
+                        <span>
+                          {DUKE_VIDEO_OPTIONS_COUNT} Vídeos IA + 10.000 Opções Prontas — 1 Clique
+                        </span>
                       </p>
                       <p className="text-[10px] text-emerald-200/75">
                         Role para ler ({filteredCatalogOptions.length.toLocaleString('pt-BR')} de{' '}
-                        {DUKE_10000_OPTIONS.length.toLocaleString('pt-BR')}) e toque em qualquer uma para executar com 1 clique
+                        {DUKE_10000_OPTIONS.length.toLocaleString('pt-BR')}) · Clique em <strong>Fazer</strong> ou{' '}
+                        <strong>Vídeo</strong> em qualquer opção
                       </p>
                     </div>
                     {messages.length > 1 && (
                       <button
                         type="button"
                         onClick={() => setShow200Catalog(false)}
-                        aria-label="Fechar lista de 10.000 opções"
+                        aria-label="Fechar lista de opções"
                         className="p-1 rounded-lg bg-black/50 hover:bg-black/80 border border-white/15 text-emerald-200 hover:text-white cursor-pointer shrink-0"
                       >
                         <X className="w-3.5 h-3.5" />
@@ -1594,7 +1905,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                       type="text"
                       value={catalogSearch}
                       onChange={(e) => setCatalogSearch(e.target.value)}
-                      placeholder="Filtrar entre as 10.000 opções (ex: foto, neon, convite, contrato, código)..."
+                      placeholder="Filtrar 500 vídeos + 10.000 opções (ex: vídeo reels, foto, convite, igreja, loja)..."
                       className="w-full rounded-xl bg-black/55 border border-amber-400/25 focus:border-amber-400 pl-8 pr-7 py-1.5 text-xs text-white placeholder:text-emerald-200/45 focus:outline-none"
                     />
                     {catalogSearch && (
@@ -1629,16 +1940,20 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                         onClick={() => setCatalogCategory(cat)}
                         className={`px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap cursor-pointer transition-colors ${
                           catalogCategory === cat
-                            ? 'bg-emerald-600 text-white'
-                            : 'bg-black/50 text-emerald-100/80 border border-amber-400/20 hover:border-amber-400/50'
+                            ? cat === 'Vídeos IA'
+                              ? 'bg-amber-400 text-neutral-950'
+                              : 'bg-emerald-600 text-white'
+                            : cat === 'Vídeos IA'
+                              ? 'bg-amber-400/15 text-amber-200 border border-amber-400/45 hover:bg-amber-400/25'
+                              : 'bg-black/50 text-emerald-100/80 border border-amber-400/20 hover:border-amber-400/50'
                         }`}
                       >
-                        {cat}
+                        {cat === 'Vídeos IA' ? `Vídeos IA (${DUKE_VIDEO_OPTIONS_COUNT})` : cat}
                       </button>
                     ))}
                   </div>
 
-                  {/* Quick Jump Markers for navigating all 10,000 options effortlessly */}
+                  {/* Quick Jump Markers for navigating all 10,500 options effortlessly */}
                   {filteredCatalogOptions.length > 500 && (
                     <div className="flex items-center gap-1 overflow-x-auto conae-scroll">
                       <span className="text-[10px] text-emerald-200/60 shrink-0 pr-0.5">Ir para:</span>
@@ -1668,7 +1983,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                     </div>
                   )}
 
-                  {/* Smooth 60 FPS Virtualized Scrollable List (10,000 options with zero lag) */}
+                  {/* Smooth 60 FPS Virtualized Scrollable List (10,500 options with zero lag) */}
                   <div
                     ref={catalogListRef}
                     onScroll={(e) => setCatalogScrollTop(e.currentTarget.scrollTop)}
@@ -1686,6 +2001,7 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                       >
                         {virtualCatalogWindow.items.map((item, offsetIdx) => {
                           const realIndex = virtualCatalogWindow.startIdx + offsetIdx;
+                          const isVideoItem = item.mode === 'video';
                           return (
                             <div
                               key={item.id}
@@ -1697,13 +2013,13 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                                 height: `${CATALOG_ROW_HEIGHT - 6}px`,
                               }}
                             >
-                              <button
-                                type="button"
-                                disabled={sending}
-                                onClick={() => handleRunCatalogOption(item)}
-                                className="w-full h-full text-left rounded-xl bg-[#091c14] hover:bg-[#0f2c20] border border-amber-400/20 hover:border-amber-400/65 px-3 py-1.5 transition-colors cursor-pointer flex items-center justify-between gap-2.5 group disabled:opacity-50"
-                              >
-                                <div className="min-w-0 flex-1 space-y-0.5">
+                              <div className="w-full h-full rounded-xl bg-[#091c14] hover:bg-[#0f2c20] border border-amber-400/20 hover:border-amber-400/65 px-3 py-1.5 transition-colors flex items-center justify-between gap-2 group">
+                                <button
+                                  type="button"
+                                  disabled={sending || renderingVideo}
+                                  onClick={() => handleRunCatalogOption(item)}
+                                  className="min-w-0 flex-1 text-left space-y-0.5 cursor-pointer disabled:opacity-50"
+                                >
                                   <div className="flex items-center gap-1.5">
                                     <span className="font-mono text-[10px] font-bold text-amber-300/90 shrink-0">
                                       #{String(item.id).padStart(5, '0')}
@@ -1715,11 +2031,31 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                                   <p className="text-[11px] text-emerald-200/75 leading-snug truncate">
                                     {item.description}
                                   </p>
+                                </button>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {!isVideoItem && (
+                                    <button
+                                      type="button"
+                                      disabled={sending || renderingVideo}
+                                      onClick={() => handleRunCatalogOptionAsVideo(item)}
+                                      title="Gerar Vídeo HD com IA a partir desta opção"
+                                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-700/70 hover:bg-emerald-500 text-white font-bold text-[10px] cursor-pointer transition-colors disabled:opacity-50"
+                                    >
+                                      <Video className="w-3 h-3" />
+                                      <span>Vídeo</span>
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    disabled={sending || renderingVideo}
+                                    onClick={() => handleRunCatalogOption(item)}
+                                    className="px-2.5 py-1 rounded-lg bg-amber-400/20 hover:bg-amber-400 text-amber-300 hover:text-neutral-950 font-bold text-[10px] cursor-pointer transition-colors disabled:opacity-50 inline-flex items-center gap-1"
+                                  >
+                                    {isVideoItem && <Film className="w-3 h-3" />}
+                                    <span>{isVideoItem ? 'Criar Vídeo' : 'Fazer'}</span>
+                                  </button>
                                 </div>
-                                <span className="shrink-0 px-2 py-1 rounded-lg bg-amber-400/15 group-hover:bg-amber-400 text-amber-300 group-hover:text-neutral-950 font-bold text-[10px] transition-colors">
-                                  Fazer
-                                </span>
-                              </button>
+                              </div>
                             </div>
                           );
                         })}
@@ -1789,13 +2125,20 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
               }`}
             >
               <Sparkles className="w-3 h-3 shrink-0" />
-              <span>10.000 Opções</span>
+              <span>10.500 Opções</span>
             </button>
             {MODE_OPTIONS.map((opt) => (
               <button
                 key={opt.id}
                 type="button"
-                onClick={() => setStudioMode(opt.id)}
+                onClick={() => {
+                  setStudioMode(opt.id);
+                  if (opt.id === 'gps') {
+                    setRightTab('gps');
+                  } else if (opt.id === 'video') {
+                    setRightTab('video');
+                  }
+                }}
                 className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap cursor-pointer transition-colors ${
                   studioMode === opt.id
                     ? 'bg-amber-400 text-neutral-950'
@@ -2023,6 +2366,30 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
               >
                 <Wand2 className="w-3.5 h-3.5" />
                 <span>Estúdio Imagem ({generatedImages.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRightTab('video')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${
+                  rightTab === 'video'
+                    ? 'bg-amber-400 text-neutral-950'
+                    : 'bg-black/45 text-emerald-100 hover:bg-black/70 border border-amber-400/20'
+                }`}
+              >
+                <Film className="w-3.5 h-3.5" />
+                <span>Estúdio Vídeo ({generatedVideos.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRightTab('gps')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${
+                  rightTab === 'gps'
+                    ? 'bg-amber-400 text-neutral-950'
+                    : 'bg-black/45 text-emerald-100 hover:bg-black/70 border border-amber-400/20'
+                }`}
+              >
+                <MapPin className="w-3.5 h-3.5" />
+                <span>GPS Maps</span>
               </button>
               <button
                 type="button"
@@ -2820,6 +3187,287 @@ export const DuqueEventoStudio: React.FC<DuqueEventoStudioProps> = ({
                   </div>
                 )}
               </div>
+            )}
+
+            {rightTab === 'video' && (
+              <div className="max-w-4xl mx-auto space-y-5">
+                {activeVideoAsset ? (
+                  <div className="rounded-2xl bg-[#07150f] border border-amber-400/35 p-4 sm:p-6 space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+                          <Film className="w-3.5 h-3.5" />
+                          <span>
+                            Vídeo HD Criado pela IA · {activeVideoAsset.aspectRatio} · {activeVideoAsset.durationSec}s
+                          </span>
+                        </p>
+                        <h2 className="font-display text-lg sm:text-xl font-bold text-white">
+                          {activeVideoAsset.title}
+                        </h2>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadGeneratedVideo(activeVideoAsset)}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-xs cursor-pointer whitespace-nowrap"
+                        >
+                          <Download className="w-4 h-4" />
+                          <span>Baixar Vídeo HD (.{activeVideoAsset.fileExtension})</span>
+                        </button>
+                        {activeVideoAsset.videoSpec.voiceoverScript && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleToggleSpeakMessage(
+                                `studio_vo_${activeVideoAsset.id}`,
+                                activeVideoAsset.videoSpec.voiceoverScript
+                              )
+                            }
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-semibold text-xs cursor-pointer whitespace-nowrap"
+                          >
+                            {speakingMsgId === `studio_vo_${activeVideoAsset.id}` ? (
+                              <VolumeX className="w-3.5 h-3.5" />
+                            ) : (
+                              <Volume2 className="w-3.5 h-3.5" />
+                            )}
+                            <span>
+                              {speakingMsgId === `studio_vo_${activeVideoAsset.id}`
+                                ? 'Parar Narração'
+                                : 'Ouvir Narração IA'}
+                            </span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Playable HD Video Player */}
+                    <div className="rounded-xl overflow-hidden bg-black border border-amber-400/30 p-3 flex items-center justify-center">
+                      {activeVideoAsset.videoUrl ? (
+                        <video
+                          key={activeVideoAsset.id}
+                          src={activeVideoAsset.videoUrl}
+                          poster={activeVideoAsset.thumbnailDataUrl}
+                          controls
+                          playsInline
+                          className="max-h-[480px] w-auto max-w-full rounded-lg shadow-2xl"
+                        />
+                      ) : (
+                        <div className="text-center space-y-2 py-8">
+                          <img
+                            src={activeVideoAsset.thumbnailDataUrl}
+                            alt={activeVideoAsset.title}
+                            className="max-h-[360px] mx-auto rounded-lg"
+                          />
+                          <p className="text-xs text-amber-200">
+                            Seu navegador não suporta gravação de vídeo via MediaRecorder. Use Chrome ou Edge para baixar o vídeo animado.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Interactive Video Re-Render Controls (Format, Style, Music) */}
+                    <div className="rounded-xl bg-black/45 border border-amber-400/25 p-4 space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <SlidersHorizontal className="w-4 h-4 text-amber-300" />
+                          <h3 className="text-xs font-bold uppercase tracking-wider text-amber-200">
+                            Personalizar & Renderizar Nova Versão do Vídeo
+                          </h3>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div className="space-y-1.5">
+                          <span className="text-[11px] font-semibold text-emerald-200/80 block">
+                            Formato do Vídeo
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {(
+                              [
+                                { id: '9:16', label: '9:16 Reels' },
+                                { id: '16:9', label: '16:9 YouTube' },
+                                { id: '1:1', label: '1:1 Feed' },
+                              ] as Array<{ id: DukeVideoAspectRatio; label: string }>
+                            ).map((r) => (
+                              <button
+                                key={r.id}
+                                type="button"
+                                disabled={renderingVideo}
+                                onClick={() => void handleRerenderActiveVideo({ aspectRatio: r.id })}
+                                className={`px-2.5 py-1 rounded-md text-[11px] font-bold cursor-pointer ${
+                                  activeVideoAsset.videoSpec.aspectRatio === r.id
+                                    ? 'bg-amber-400 text-neutral-950'
+                                    : 'bg-[#081711] text-emerald-100 border border-white/15 hover:border-amber-400/50'
+                                }`}
+                              >
+                                {r.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5 md:col-span-2">
+                          <span className="text-[11px] font-semibold text-emerald-200/80 block">
+                            Estilo Visual Cinematográfico
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {(
+                              [
+                                { id: 'cinematic_gold', label: 'Ouro Cinema' },
+                                { id: 'neon_cyber', label: 'Neon Cyber' },
+                                { id: 'aurora_glass', label: 'Aurora Vidro' },
+                                { id: 'royal_emerald', label: 'Esmeralda CONAE' },
+                                { id: 'sunset_promo', label: 'Pôr do Sol' },
+                                { id: 'editorial_noir', label: 'Noir Luxo' },
+                              ] as Array<{ id: DukeVideoVisualStyle; label: string }>
+                            ).map((st) => (
+                              <button
+                                key={st.id}
+                                type="button"
+                                disabled={renderingVideo}
+                                onClick={() => void handleRerenderActiveVideo({ visualStyle: st.id })}
+                                className={`px-2.5 py-1 rounded-md text-[11px] font-bold cursor-pointer ${
+                                  activeVideoAsset.videoSpec.visualStyle === st.id
+                                    ? 'bg-emerald-600 text-white'
+                                    : 'bg-[#081711] text-emerald-100 border border-white/15 hover:border-amber-400/50'
+                                }`}
+                              >
+                                {st.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5 md:col-span-3">
+                          <span className="text-[11px] font-semibold text-emerald-200/80 flex items-center gap-1">
+                            <Music className="w-3 h-3 text-amber-300" />
+                            Trilha Sonora Sintetizada
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {(
+                              [
+                                { id: 'epic_inspirational', label: 'Épico Inspirador' },
+                                { id: 'modern_tech', label: 'Moderno Tech' },
+                                { id: 'corporate_upbeat', label: 'Executivo Dinâmico' },
+                                { id: 'worship_warm', label: 'Adoração Suave' },
+                                { id: 'luxury_gala', label: 'Gala Sofisticada' },
+                              ] as Array<{ id: DukeVideoMusicMood; label: string }>
+                            ).map((mood) => (
+                              <button
+                                key={mood.id}
+                                type="button"
+                                disabled={renderingVideo}
+                                onClick={() => void handleRerenderActiveVideo({ musicMood: mood.id })}
+                                className={`px-2.5 py-1 rounded-md text-[11px] font-bold cursor-pointer ${
+                                  activeVideoAsset.videoSpec.musicMood === mood.id
+                                    ? 'bg-amber-400 text-neutral-950'
+                                    : 'bg-[#081711] text-emerald-100 border border-white/15 hover:border-amber-400/50'
+                                }`}
+                              >
+                                {mood.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Scenes Overview */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2 border-t border-white/10">
+                        {activeVideoAsset.videoSpec.scenes.map((scene) => (
+                          <div
+                            key={scene.sceneNumber}
+                            className="rounded-lg bg-[#081711] border border-amber-400/20 p-2.5 space-y-1"
+                          >
+                            <div className="flex items-center justify-between text-[10px] font-bold text-amber-300">
+                              <span>
+                                CENA {scene.sceneNumber} · {scene.badge}
+                              </span>
+                              <span className="font-mono text-emerald-300">{scene.durationSec}s</span>
+                            </div>
+                            <p className="text-xs font-bold text-white leading-snug">{scene.headline}</p>
+                            <p className="text-[11px] text-emerald-200/75 leading-snug">{scene.subheadline}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Video History Strip */}
+                    {generatedVideos.length > 1 && (
+                      <div className="pt-3 border-t border-amber-400/20 space-y-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-emerald-200/75">
+                          Histórico de Vídeos Criados ({generatedVideos.length})
+                        </p>
+                        <div className="flex items-center gap-2.5 overflow-x-auto conae-scroll pb-1">
+                          {generatedVideos.map((vid) => (
+                            <button
+                              key={vid.id}
+                              type="button"
+                              onClick={() => setActiveVideoId(vid.id)}
+                              className={`shrink-0 w-24 h-20 rounded-xl overflow-hidden border-2 relative cursor-pointer transition-all ${
+                                activeVideoAsset.id === vid.id
+                                  ? 'border-amber-400 scale-105'
+                                  : 'border-white/15 opacity-75 hover:opacity-100'
+                              }`}
+                            >
+                              <img
+                                src={vid.thumbnailDataUrl}
+                                alt={vid.title}
+                                className="w-full h-full object-cover"
+                              />
+                              <span className="absolute inset-0 bg-black/35 flex items-center justify-center">
+                                <Play className="w-5 h-5 text-amber-300 fill-amber-300" />
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="h-full min-h-[420px] flex items-center justify-center">
+                    <div className="max-w-lg w-full rounded-2xl bg-[#07140e] border border-amber-400/25 p-6 sm:p-8 text-center space-y-4">
+                      <div className="w-12 h-12 rounded-2xl bg-amber-400/15 border border-amber-400/40 text-amber-300 flex items-center justify-center mx-auto">
+                        <Film className="w-6 h-6" />
+                      </div>
+                      <h2 className="font-display text-2xl font-bold text-white">
+                        Estúdio de Vídeos com Inteligência Artificial
+                      </h2>
+                      <p className="text-sm text-emerald-200/80 leading-relaxed">
+                        Peça qualquer vídeo no chat — ou escolha entre as{' '}
+                        <strong>{DUKE_VIDEO_OPTIONS_COUNT} opções exclusivas de vídeo</strong> e mais{' '}
+                        <strong>10.000 opções</strong> conversíveis em vídeo com 1 clique! Cada vídeo é renderizado em HD com trilha sonora para assistir e baixar.
+                      </p>
+                      <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCatalogCategory('Vídeos IA');
+                            setShow200Catalog(true);
+                            setStudioMode('video');
+                            setMobilePane('chat');
+                          }}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-xs cursor-pointer"
+                        >
+                          <Film className="w-4 h-4" />
+                          <span>Abrir 500 Opções de Vídeo IA</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {rightTab === 'gps' && (
+              <DukeGpsMapPanel
+                incomingRequest={activeGpsRequest}
+                onAskRobotAboutPlace={(prompt) => {
+                  setStudioMode('chat');
+                  setMobilePane('chat');
+                  void handleSendMessage(prompt, 'chat');
+                }}
+              />
             )}
 
             {rightTab === 'publish' && (

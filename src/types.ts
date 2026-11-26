@@ -528,7 +528,7 @@ export interface DukeEventRecord extends DukeEventSpec {
   updatedAt?: unknown;
 }
 
-export type DukeStudioMode = 'auto' | 'chat' | 'image' | 'event';
+export type DukeStudioMode = 'auto' | 'chat' | 'image' | 'video' | 'gps' | 'event';
 
 export type DukeImageAspectRatio = '1:1' | '16:9' | '9:16' | '4:5';
 
@@ -643,17 +643,88 @@ export interface DukeGeneratedAsset {
   createdAt: string;
 }
 
+export type DukeVideoAspectRatio = '9:16' | '16:9' | '1:1';
+
+export type DukeVideoVisualStyle =
+  | 'cinematic_gold'
+  | 'neon_cyber'
+  | 'aurora_glass'
+  | 'royal_emerald'
+  | 'sunset_promo'
+  | 'editorial_noir';
+
+export type DukeVideoMusicMood =
+  | 'epic_inspirational'
+  | 'modern_tech'
+  | 'corporate_upbeat'
+  | 'worship_warm'
+  | 'luxury_gala';
+
+export interface DukeVideoScene {
+  sceneNumber: number;
+  durationSec: number;
+  badge: string;
+  headline: string;
+  subheadline: string;
+  ctaText?: string;
+  cameraMotion: 'zoom_in' | 'zoom_out' | 'pan_left' | 'pan_right';
+  visualMotif: 'particles' | 'beams' | 'waves' | 'rings' | 'grid' | 'bokeh';
+  bgStart: string;
+  bgMid: string;
+  bgEnd: string;
+  accentColor: string;
+}
+
+export interface DukeVideoSpec {
+  title: string;
+  summary: string;
+  aspectRatio: DukeVideoAspectRatio;
+  visualStyle: DukeVideoVisualStyle;
+  musicMood: DukeVideoMusicMood;
+  voiceoverScript: string;
+  footerBrand?: string;
+  scenes: DukeVideoScene[];
+}
+
+export interface DukeGeneratedVideo {
+  id: string;
+  title: string;
+  aspectRatio: DukeVideoAspectRatio;
+  videoUrl: string;
+  mimeType: string;
+  fileExtension: string;
+  thumbnailDataUrl: string;
+  durationSec: number;
+  sourcePhotoUrl?: string;
+  videoSpec: DukeVideoSpec;
+  createdAt: string;
+}
+
+export type DukeGpsTravelMode = 'DRIVING' | 'WALKING' | 'BICYCLING' | 'TRANSIT';
+
+export interface DukeGpsRequest {
+  requestId?: string;
+  action: 'search' | 'route' | 'my_location';
+  query: string;
+  originQuery?: string;
+  destinationQuery?: string;
+  travelMode?: DukeGpsTravelMode;
+  label?: string;
+}
+
 export interface DukeChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   createdAt: string;
-  modeUsed?: 'chat' | 'image' | 'event';
+  modeUsed?: 'chat' | 'image' | 'video' | 'gps' | 'event';
   publishedUrl?: string;
   attachmentPreview?: string;
   attachmentName?: string;
   generatedImage?: DukeGeneratedAsset;
   generatedImages?: DukeGeneratedAsset[];
+  generatedVideo?: DukeGeneratedVideo;
+  gpsRequest?: DukeGpsRequest;
   sources?: DukeWebSource[];
   quickOptions?: DukeQuickOption[];
 }
