@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   APIProvider,
   AdvancedMarker,
@@ -24,11 +24,20 @@ import {
   Star,
   X,
 } from 'lucide-react';
+import { createMapsAppCheckTokenFetcher } from '../firebase';
 import type { DukeGpsRequest, DukeGpsTravelMode } from '../types';
 
 const GOOGLE_MAPS_API_KEY = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '').trim();
+const RECAPTCHA_ENTERPRISE_SITE_KEY = (import.meta.env.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY || '').trim();
 const GMP_ATTRIBUTION_ID = 'gmp_mcp_codeassist_v1_aistudio';
-const DEFAULT_BRAZIL_CENTER = { lat: -15.793889, lng: -47.882778 };
+const DEFAULT_GPS_CENTER = { lat: 0.0349, lng: -51.0694 };
+const DEFAULT_GPS_ZOOM = 13;
+const DEFAULT_PIN_PLACE: GpsPlaceResult = {
+  id: 'default_pinned_point',
+  displayName: 'Ponto no mapa',
+  formattedAddress: '0.0349, -51.0694',
+  location: DEFAULT_GPS_CENTER,
+};
 
 type GmpLatLngLike =
   | { lat: number; lng: number }
@@ -75,6 +84,10 @@ interface GpsRouteSummary {
 interface DukeGpsMapPanelProps {
   incomingRequest: DukeGpsRequest | null;
   onAskRobotAboutPlace?: (prompt: string) => void;
+}
+
+interface GpsWorkspaceInternalProps extends DukeGpsMapPanelProps {
+  fetchAppCheckToken?: () => Promise<{ token: string }>;
 }
 
 function isQuotaError(err: unknown): boolean {
@@ -141,14 +154,32 @@ const TRAVEL_MODES: Array<{ id: DukeGpsTravelMode; label: string; icon: React.Re
   { id: 'BICYCLING', label: 'Bike', icon: <Bike className="w-3.5 h-3.5" /> },
 ];
 
-const GpsInteractiveWorkspace: React.FC<DukeGpsMapPanelProps> = ({
+const GpsInteractiveWorkspace: React.FC<GpsWorkspaceInternalProps> = ({
   incomingRequest,
   onAskRobotAboutPlace,
+  fetchAppCheckToken,
 }) => {
   const map = useMap('duke-gps-map');
   const placesLib = useMapsLibrary('places');
   const routesLib = useMapsLibrary('routes');
   const coreLib = useMapsLibrary('core');
+
+  // Bind Firebase App Check token provider onto google.maps.Settings singleton when configured
+  useEffect(() => {
+    if (!coreLib || !fetchAppCheckToken) return;
+    const SettingsCtor = (
+      coreLib as unknown as {
+        Settings?: {
+          getInstance: () => {
+            fetchAppCheckToken?: () => Promise<{ token: string }>;
+          };
+        };
+      }
+    ).Settings;
+    if (SettingsCtor?.getInstance) {
+      SettingsCtor.getInstance().fetchAppCheckToken = fetchAppCheckToken;
+    }
+  }, [coreLib, fetchAppCheckToken]);
 
   const autocompleteContainerRef = useRef<HTMLDivElement | null>(null);
   const routePolylinesRef = useRef<GmpPolylineLike[]>([]);
@@ -612,6 +643,21 @@ const GpsInteractiveWorkspace: React.FC<DukeGpsMapPanelProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
+              onClick={() => {
+                setSelectedPlace(DEFAULT_PIN_PLACE);
+                if (map) {
+                  map.panTo(DEFAULT_GPS_CENTER);
+                  map.setZoom(DEFAULT_GPS_ZOOM);
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black/50 hover:bg-black/75 border border-amber-400/35 text-amber-200 font-bold text-xs cursor-pointer whitespace-nowrap"
+            >
+              <MapPin className="w-3.5 h-3.5" />
+              <span>Ponto no Mapa</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => void locateCurrentGps()}
               disabled={locatingGps}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-semibold text-xs cursor-pointer whitespace-nowrap disabled:opacity-55"
@@ -796,8 +842,8 @@ const GpsInteractiveWorkspace: React.FC<DukeGpsMapPanelProps> = ({
         <GoogleMap
           id="duke-gps-map"
           mapId="DEMO_MAP_ID"
-          defaultCenter={DEFAULT_BRAZIL_CENTER}
-          defaultZoom={4}
+          defaultCenter={DEFAULT_GPS_CENTER}
+          defaultZoom={DEFAULT_GPS_ZOOM}
           gestureHandling="greedy"
           streetViewControl
           mapTypeControl
@@ -805,6 +851,27 @@ const GpsInteractiveWorkspace: React.FC<DukeGpsMapPanelProps> = ({
           internalUsageAttributionIds={[GMP_ATTRIBUTION_ID]}
           className="w-full h-full"
         >
+          {/* Default Pinned Location Marker (Modern AdvancedMarker replacing legacy google.maps.Marker) */}
+          <AdvancedMarker
+            position={DEFAULT_GPS_CENTER}
+            title="Ponto no mapa"
+            zIndex={selectedPlace?.id === DEFAULT_PIN_PLACE.id ? 60 : 20}
+            onClick={() => {
+              setSelectedPlace(DEFAULT_PIN_PLACE);
+              if (map) {
+                map.panTo(DEFAULT_GPS_CENTER);
+                map.setZoom(DEFAULT_GPS_ZOOM);
+              }
+            }}
+          >
+            <Pin
+              background="#f59e0b"
+              borderColor="#fef3c7"
+              glyphColor="#09090b"
+              scale={1.15}
+            />
+          </AdvancedMarker>
+
           {/* User Live GPS Marker */}
           {userLocation && (
             <AdvancedMarker position={userLocation} title="Minha Localização GPS Atual">
@@ -1010,23 +1077,35 @@ export const DukeGpsMapPanel: React.FC<DukeGpsMapPanelProps> = ({
   onAskRobotAboutPlace,
 }) => {
   const [resolvedApiKey, setResolvedApiKey] = useState<string>(GOOGLE_MAPS_API_KEY);
+  const [resolvedRecaptchaKey, setResolvedRecaptchaKey] = useState<string>(RECAPTCHA_ENTERPRISE_SITE_KEY);
   const [checkingKey, setCheckingKey] = useState<boolean>(!GOOGLE_MAPS_API_KEY);
 
   useEffect(() => {
-    if (GOOGLE_MAPS_API_KEY) {
+    if (GOOGLE_MAPS_API_KEY && RECAPTCHA_ENTERPRISE_SITE_KEY) {
       setResolvedApiKey(GOOGLE_MAPS_API_KEY);
+      setResolvedRecaptchaKey(RECAPTCHA_ENTERPRISE_SITE_KEY);
       setCheckingKey(false);
       return;
     }
 
     let cancelled = false;
-    setCheckingKey(true);
+    if (!GOOGLE_MAPS_API_KEY) {
+      setCheckingKey(true);
+    }
 
     fetch('/api/maps-config', { cache: 'no-store' })
       .then((res) => (res.ok ? res.json() : null))
-      .then((data: { apiKey?: string } | null) => {
-        if (!cancelled && data?.apiKey && typeof data.apiKey === 'string') {
+      .then((data: { apiKey?: string; recaptchaSiteKey?: string } | null) => {
+        if (cancelled || !data) return;
+        if (!GOOGLE_MAPS_API_KEY && data.apiKey && typeof data.apiKey === 'string') {
           setResolvedApiKey(data.apiKey.trim());
+        }
+        if (
+          !RECAPTCHA_ENTERPRISE_SITE_KEY &&
+          data.recaptchaSiteKey &&
+          typeof data.recaptchaSiteKey === 'string'
+        ) {
+          setResolvedRecaptchaKey(data.recaptchaSiteKey.trim());
         }
       })
       .catch(() => {
@@ -1042,6 +1121,11 @@ export const DukeGpsMapPanel: React.FC<DukeGpsMapPanelProps> = ({
       cancelled = true;
     };
   }, []);
+
+  const fetchAppCheckToken = useMemo(
+    () => createMapsAppCheckTokenFetcher(resolvedRecaptchaKey),
+    [resolvedRecaptchaKey]
+  );
 
   if (checkingKey) {
     return (
@@ -1068,10 +1152,16 @@ export const DukeGpsMapPanel: React.FC<DukeGpsMapPanelProps> = ({
   }
 
   return (
-    <APIProvider apiKey={resolvedApiKey} language="pt-BR" region="BR">
+    <APIProvider
+      apiKey={resolvedApiKey}
+      language="pt-BR"
+      region="BR"
+      fetchAppCheckToken={fetchAppCheckToken}
+    >
       <GpsInteractiveWorkspace
         incomingRequest={incomingRequest}
         onAskRobotAboutPlace={onAskRobotAboutPlace}
+        fetchAppCheckToken={fetchAppCheckToken}
       />
     </APIProvider>
   );

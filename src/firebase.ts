@@ -1,12 +1,60 @@
 import { initializeApp } from 'firebase/app';
+import {
+  getToken,
+  initializeAppCheck,
+  ReCaptchaEnterpriseProvider,
+  type AppCheck,
+} from 'firebase/app-check';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
-const app = initializeApp(firebaseConfig);
+export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+
+let cachedAppCheck: AppCheck | null = null;
+let cachedAppCheckKey = '';
+
+const INVALID_RECAPTCHA_PLACEHOLDERS = new Set([
+  '',
+  'abcdefghijklmnopqrstuvwxy-1234567890abcd',
+  'MY_RECAPTCHA_ENTERPRISE_SITE_KEY',
+  'YOUR_RECAPTCHA_ENTERPRISE_SITE_KEY',
+]);
+
+export function getOrInitFirebaseAppCheck(siteKey: string): AppCheck | null {
+  const cleanKey = (siteKey || '').trim();
+  if (!cleanKey || INVALID_RECAPTCHA_PLACEHOLDERS.has(cleanKey)) {
+    return null;
+  }
+  if (cachedAppCheck && cachedAppCheckKey === cleanKey) {
+    return cachedAppCheck;
+  }
+  if (cachedAppCheck) {
+    return cachedAppCheck;
+  }
+  try {
+    cachedAppCheck = initializeAppCheck(app, {
+      provider: new ReCaptchaEnterpriseProvider(cleanKey),
+      isTokenAutoRefreshEnabled: true,
+    });
+    cachedAppCheckKey = cleanKey;
+    return cachedAppCheck;
+  } catch (err) {
+    console.warn('[Firebase App Check] Initialization skipped:', err);
+    return null;
+  }
+}
+
+export function createMapsAppCheckTokenFetcher(
+  siteKey: string
+): (() => Promise<{ token: string }>) | undefined {
+  const appCheckInstance = getOrInitFirebaseAppCheck(siteKey);
+  if (!appCheckInstance) return undefined;
+  return () => getToken(appCheckInstance, false);
+}
 
 export const BOOTSTRAPPED_ADMIN_EMAIL = 'princesabloxy123@gmail.com';
 export const PRESIDENT_MASTER_HASH = '92a1f953de6fe86d079dd4185a00c8e2bd9fb6eee898953c29102a9513812d07';

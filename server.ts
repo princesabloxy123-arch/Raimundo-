@@ -25,8 +25,13 @@ async function startServer() {
       process.env.GOOGLE_MAPS_PLATFORM_KEY ||
       ''
     ).trim();
+    const recaptchaSiteKey = (
+      process.env.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY ||
+      process.env.RECAPTCHA_ENTERPRISE_SITE_KEY ||
+      ''
+    ).trim();
     res.setHeader('Cache-Control', 'no-store');
-    res.status(200).json({ apiKey });
+    res.status(200).json({ apiKey, recaptchaSiteKey });
   });
 
   app.get('/api/duke-evento/chat', (_req, res) => {
